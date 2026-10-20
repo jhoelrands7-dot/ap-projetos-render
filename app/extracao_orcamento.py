@@ -30,6 +30,8 @@ ST_EXTRAIDO, ST_NAO, ST_AMBIGUO, ST_NAOVERIF = "Extraído", "Não encontrado", "
 
 COLS = {"valor": "Valor extraído", "unidade": "Unidade encontrada", "status": "Status da extração",
         "pagina": "Página", "evidencia": "Trecho de evidência", "obs": "Observações"}
+# Layout enxuto (escopo confirmado 2026-10-20): "Campo a extrair | Definição | Resultado extraído | Observações / pendências"
+COLS_ENXUTO = {"valor": "Resultado extraído", "obs": "Observações / pendências"}
 
 _STOP = set("""para com uma como que dos das seu sua isso este esta entre sobre deve devem ser ter tipo
 tipo de cada qual quais mediante conforme quando onde pelo pela nos nas aos às the and or of for with shall""".split())
@@ -280,8 +282,20 @@ def ler_checklist(caminho_xlsx):
             if h and (nh == nr or (nr and nr in nh)):
                 idx.setdefault(k, col)
     faltam = [r for k, r in COLS.items() if k not in idx]
+    enxuto = False
     if faltam:
-        raise ValueError("Checklist fora do layout esperado: colunas não achadas na linha 3: " + ", ".join(faltam))
+        # tenta o layout enxuto: Resultado extraído + Observações / pendências
+        idx = {}
+        for col in range(1, ws.max_column + 1):
+            h = ws.cell(3, col).value
+            for k, rotulo in COLS_ENXUTO.items():
+                nh, nr = _norm(h), _norm(rotulo)
+                if h and (nh == nr or (nr and nr in nh)):
+                    idx.setdefault(k, col)
+        faltam2 = [r for k, r in COLS_ENXUTO.items() if k not in idx]
+        if faltam2:
+            raise ValueError("Checklist fora do layout esperado: colunas não achadas na linha 3: " + ", ".join(faltam))
+        enxuto = True
     campos = []
     for r in range(4, ws.max_row + 1):
         if ws.cell(r, 1).value:
@@ -290,7 +304,7 @@ def ler_checklist(caminho_xlsx):
                            "campo": str(ws.cell(r, 3).value or "").strip(),
                            "definicao": str(ws.cell(r, 4).value or ""),
                            "unidade_ref": str(ws.cell(r, 5).value or "")})
-    return wb, ws, idx, campos
+    return wb, ws, idx, campos, enxuto
 
 
 def executar(caminho_pdf, caminho_xlsx, caminho_saida):
@@ -299,7 +313,7 @@ def executar(caminho_pdf, caminho_xlsx, caminho_saida):
     if not doc.paginas or len(doc.texto_completo.strip()) < 100:
         raise ValueError("Documento sem texto extraível (sem OCR neste MVP: PDF escaneado não funciona).")
     paginas_norm = [(p.numero or 1, _norm(p.texto)) for p in doc.paginas]
-    wb, ws, idx, campos = ler_checklist(caminho_xlsx)
+    wb, ws, idx, campos, enxuto = ler_checklist(caminho_xlsx)
     cats = {}
     for c in campos:
         cats.setdefault(c["categoria"], []).append(c)
@@ -324,12 +338,32 @@ def executar(caminho_pdf, caminho_xlsx, caminho_saida):
         else:
             status, valor, unidade, pagina, evid, obs = _revisar(c["id"], c, res, paginas_norm)
         stats[status] += 1
-        ws.cell(c["linha"], idx["valor"]).value = valor or None
-        ws.cell(c["linha"], idx["unidade"]).value = unidade or None
-        ws.cell(c["linha"], idx["status"]).value = status
-        ws.cell(c["linha"], idx["pagina"]).value = pagina
-        ws.cell(c["linha"], idx["evidencia"]).value = evid or None
-        ws.cell(c["linha"], idx["obs"]).value = obs or None
+        if enxuto:
+            # layout enxuto: Resultado = valor (ou o status quando vazio);
+            # Observações = status + página + evidência curta (auditoria mínima por campo)
+            if status == ST_EXTRAIDO:
+                res_txt = valor
+                nota = f"[Extraído · p. {pagina}] {evid}"[:320] if pagina else f"[Extraído] {evid}"[:320]
+                if obs:
+                    nota = (nota + " | " + obs)[:320]
+            elif status == ST_AMBIGUO:
+                res_txt = valor or ""
+                nota = ("[A confirmar] " + (obs or ""))[:320]
+            elif status == ST_NAO:
+                res_txt = "Não encontrado"
+                nota = ("[Não encontrado] " + (obs or ""))[:320]
+            else:
+                res_txt = "Não verificado"
+                nota = ("[Não verificado] " + (obs or ""))[:320]
+            ws.cell(c["linha"], idx["valor"]).value = res_txt or None
+            ws.cell(c["linha"], idx["obs"]).value = nota or None
+        else:
+            ws.cell(c["linha"], idx["valor"]).value = valor or None
+            ws.cell(c["linha"], idx["unidade"]).value = unidade or None
+            ws.cell(c["linha"], idx["status"]).value = status
+            ws.cell(c["linha"], idx["pagina"]).value = pagina
+            ws.cell(c["linha"], idx["evidencia"]).value = evid or None
+            ws.cell(c["linha"], idx["obs"]).value = obs or None
 
     aud = wb.create_sheet("Auditoria") if "Auditoria" not in wb.sheetnames else wb["Auditoria"]
     linhas = [
