@@ -26,11 +26,15 @@ def executar_verificacao(caminho, origem=None):
     doc = extratores.extrair(caminho)
     log.append(f"extração: formato={doc.formato}, páginas/abas={doc.num_paginas}")
     t0 = datetime.now(timezone.utc)
+    ia.reset_contadores()
     resultados = motor.verificar(doc)
     t1 = datetime.now(timezone.utc)
     log.append(f"motor {motor.MOTOR_VERSAO}: {len(resultados)} itens avaliados em {(t1-t0).total_seconds():.3f}s")
     analise_ia = ia.comentar(resultados) if ia.disponivel() else None
     log.append("análise auxiliar de IA (resumo + comentários): " + ("gerada" if analise_ia else "indisponível"))
+    ia_status = ia.status()
+    if ia_status["falhas"]:
+        log.append(f"ATENÇÃO: IA ({ia_status['modelo']}) falhou {ia_status['falhas']}x nesta execução ({ia_status['ultimo_erro']}); itens de classe B avaliados por heurística simulada")
     fim = datetime.now(timezone.utc)
     log.append(f"{fim.isoformat()} fim da verificação")
     registro = {
@@ -47,6 +51,7 @@ def executar_verificacao(caminho, origem=None):
             "motor": motor.MOTOR_VERSAO,
             "fonte_checklist": "print da planilha FRM-SEMEC-001 (slide 12 do PPTX da AP); planilha original não fornecida",
         },
+        "ia": ia_status,
         "execucao": {
             "inicio_utc": inicio.isoformat(),
             "fim_utc": fim.isoformat(),

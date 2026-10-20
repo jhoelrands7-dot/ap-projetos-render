@@ -89,6 +89,14 @@ def render(registro, slug=None):
     chips = " ".join(
         f'<span class="chip" style="background:{CORES[k]}">{_e(k)}: {v}</span>'
         for k, v in resumo.items())
+    aviso_ia = ""
+    _ias = registro.get("ia") or {}
+    if _ias.get("falhas"):
+        aviso_ia = (f'<div style="background:#fff8e6;border:1px solid #e5c07b;border-radius:6px;'
+                    f'padding:10px 14px;margin:10px 0;font-size:13.5px">'
+                    f'<b>Aviso:</b> a IA ({_e(_ias.get("modelo",""))}) falhou {_e(_ias.get("falhas"))}x nesta execução'
+                    f' ({_e(_ias.get("ultimo_erro") or "erro")}). Os itens de classe B foram avaliados por '
+                    f'<b>heurística simulada</b> (pílula correspondente) e a análise geral da IA ficou indisponível.</div>')
     blocos = []
     secao = None
     for r in registro["resultados"]:
@@ -153,6 +161,7 @@ def render(registro, slug=None):
  <tr><td>Reprodutível</td><td>{_e(repro_txt)}</td></tr>
 </table></details>
 <div class="chips">{chips}</div>
+{aviso_ia}
 {bloco_ia_geral}
 </div>
 {''.join(blocos)}

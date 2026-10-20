@@ -13,7 +13,7 @@ import json, os, re, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from flask import Flask, request, redirect, send_file, send_from_directory, abort
 
-import auditoria, relatorio, relatorio_html
+import auditoria, relatorio, relatorio_html, ia
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 SAIDA = os.path.join(BASE, "saida")
@@ -180,7 +180,9 @@ def home():
                        f'<td>{_chips(resumo)}</td></tr>')
         except Exception:
             pass
-    modo_ia = "ligada" if os.environ.get("NVIDIA_API_KEY") else "desligada (heurística simulada nos itens de classe B)"
+    modo_ia = (f"ligada (modelo {ia.MODELO}) &middot; <a href='/saude-ia' target='_blank'>testar agora</a>"
+               if os.environ.get("NVIDIA_API_KEY")
+               else "desligada (heurística simulada nos itens de classe B)")
     return f"""<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>AP - Verificação de Documentos de Engenharia</title><style>{CSS}</style></head>
 <body>
@@ -271,6 +273,11 @@ Itens marcados "Heurística (simulada)" ainda não usam IA; itens "IA (NVIDIA NI
 Documentos de outras organizações não seguem o padrão AP de numeração/carimbo: nesses itens, o achado indica diferença de padrão, não necessariamente erro no documento.</div>
 <div class="rodape">MVP - Módulo 1 (verificação de documentos) &middot; LuxVerso &middot; extração local; trechos enviados à NVIDIA quando a IA está ligada</div>
 </div></body></html>"""
+
+
+@app.route("/saude-ia")
+def saude_ia():
+    return ia.saude()
 
 
 @app.route("/verificar", methods=["POST"])

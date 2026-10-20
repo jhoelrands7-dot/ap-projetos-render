@@ -7,13 +7,68 @@ Ponto de troca para IA real nas regras de classe B (NVIDIA NIM).
   SIMULADA já existente, e o resultado diz qual caminho foi usado.
 - Endpoint OpenAI-compatível: POST https://integrate.api.nvidia.com/v1/chat/completions
   (fonte: https://docs.api.nvidia.com/nim/reference/llm-apis)
-- Modelo padrão: nvidia/nemotron-3-super-120b-a12b (modelo de raciocínio; meta/llama-3.3-70b-instruct foi descontinuado pela NVIDIA em 2026-08-26).
+- Modelo padrão: meta/llama-3.2-11b-vision-instruct (nvidia/nemotron-3-super-120b-a12b passou a responder 404 para a conta em 2026-10-20; llama-3.1-8b e llama-3.3-70b foram descontinuados pela NVIDIA em 2026-08-26).
 """
 import json, os, re, urllib.request, urllib.error
 
 ENDPOINT = "https://integrate.api.nvidia.com/v1/chat/completions"
-MODELO = os.environ.get("NVIDIA_MODELO", "nvidia/nemotron-3-super-120b-a12b")
+MODELO = os.environ.get("NVIDIA_MODELO", "meta/llama-3.2-11b-vision-instruct")
 ROTULO_IA = f"IA via NVIDIA NIM ({MODELO})"
+
+# --- observabilidade mínima (honestidade na demo) ---
+ULTIMO_ERRO = None
+FALHAS = 0
+CHAMADAS = 0
+
+
+def _registrar_falha(msg):
+    global ULTIMO_ERRO, FALHAS
+    ULTIMO_ERRO = msg
+    FALHAS += 1
+
+
+def _registrar_sucesso():
+    global CHAMADAS
+    CHAMADAS += 1
+
+
+def reset_contadores():
+    global ULTIMO_ERRO, FALHAS, CHAMADAS
+    ULTIMO_ERRO = None
+    FALHAS = 0
+    CHAMADAS = 0
+
+
+def status():
+    return {"modelo": MODELO, "chamadas": CHAMADAS, "falhas": FALHAS, "ultimo_erro": ULTIMO_ERRO}
+
+
+def saude(timeout=20):
+    """Healthcheck real: 1 completition mínima contra o endpoint. Sem chave, ok=False."""
+    chave = os.environ.get("NVIDIA_API_KEY")
+    if not chave:
+        return {"modelo": MODELO, "ok": False, "http": None, "detalhe": "NVIDIA_API_KEY ausente nesta instância"}
+    corpo = {"model": MODELO,
+             "messages": [{"role": "user", "content": "Responda apenas: ok"}],
+             "temperature": 0, "max_tokens": 5}
+    req = urllib.request.Request(
+        ENDPOINT, data=json.dumps(corpo).encode(),
+        headers={"Authorization": f"Bearer {chave}", "Content-Type": "application/json"},
+        method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            json.loads(resp.read().decode())
+        return {"modelo": MODELO, "ok": True, "http": 200, "detalhe": "endpoint respondeu"}
+    except urllib.error.HTTPError as e:
+        det = ""
+        try:
+            det = e.read().decode()[:200]
+        except Exception:
+            pass
+        return {"modelo": MODELO, "ok": False, "http": e.code, "detalhe": det or str(e)}
+    except Exception as e:
+        return {"modelo": MODELO, "ok": False, "http": None, "detalhe": str(e)[:200]}
+
 
 _STATUS_VALIDOS = {"CONFORME", "NÃO CONFORME", "EVIDÊNCIA INSUFICIENTE", "NÃO SE APLICA"}
 
@@ -63,10 +118,15 @@ def avaliar_classe_b(item, descricao, trecho, timeout=30):
         res = json.loads(m.group(0))
         if res.get("status") not in _STATUS_VALIDOS:
             return None
+        _registrar_sucesso()
         return {"status": res["status"],
                 "observacao": res.get("justificativa", "")[:400],
                 "evidencia": (res.get("evidencia") or "")[:300]}
-    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, KeyError, ValueError):
+    except urllib.error.HTTPError as e:
+        _registrar_falha(f"HTTP {e.code}")
+        return None
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, KeyError, ValueError) as e:
+        _registrar_falha(str(e)[:160])
         return None
 
 
@@ -120,7 +180,12 @@ def comentar(resultados, timeout=60):
             return None
         validos = {r["item"] for r in resultados}
         comentarios = {k: str(v)[:500] for k, v in comentarios.items() if k in validos}
+        _registrar_sucesso()
         return {"resumo": str(res["resumo"])[:1200], "comentarios": comentarios,
                 "modelo": MODELO}
-    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, KeyError, ValueError):
+    except urllib.error.HTTPError as e:
+        _registrar_falha(f"HTTP {e.code}")
+        return None
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, KeyError, ValueError) as e:
+        _registrar_falha(str(e)[:160])
         return None

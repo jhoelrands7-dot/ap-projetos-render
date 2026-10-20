@@ -372,6 +372,11 @@ def verificar(doc):
     resultados = []
     for item, secao, descricao, classe in CHECKLIST:
         status, obs, evs = AVALIADORES[item](doc)
-        decisao = ia.ROTULO_IA if obs.startswith("IA (") else None
+        if obs.startswith("IA ("):
+            decisao = ia.ROTULO_IA
+        elif "SIMULADO" in obs:
+            decisao = "heurística simulada (classe B)"
+        else:
+            decisao = None
         resultados.append(_resultado(item, secao, descricao, classe, status, obs, evs, decisao_por=decisao))
     return resultados

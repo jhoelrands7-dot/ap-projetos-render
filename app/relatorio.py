@@ -61,6 +61,15 @@ def gerar_relatorio(registro, caminho_pdf):
     story.append(Spacer(1, 8))
     chips = "   ".join(f"{k}: {v}" for k, v in resumo.items())
     story.append(Paragraph(f"Resumo: {chips}", cel_b))
+    _ias = registro.get("ia") or {}
+    if _ias.get("falhas"):
+        av_st = ParagraphStyle("av", parent=cel, fontSize=8.5, textColor=colors.HexColor("#6b5310"),
+                               backColor=colors.HexColor("#fff8e6"), borderColor=colors.HexColor("#e5c07b"),
+                               borderWidth=0.6, borderPadding=5, spaceBefore=4, spaceAfter=4)
+        story.append(Paragraph(
+            f"<b>Aviso:</b> a IA ({_ias.get('modelo','')}) falhou {_ias.get('falhas')}x nesta execução "
+            f"({_ias.get('ultimo_erro') or 'erro'}). Itens de classe B avaliados por heurística simulada; "
+            f"análise geral da IA indisponível.", av_st))
     analise = registro.get("analise_ia") or {}
     comentarios = analise.get("comentarios", {})
     if analise.get("resumo"):
