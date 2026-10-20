@@ -95,7 +95,7 @@ TRECHOS:
 \"\"\""""
 
 
-def _chama_ia(msgs, timeout=90, tentativas=2):
+def _chama_ia(msgs, timeout=150, tentativas=2):
     """Mesma disciplina do ia.avaliar_classe_b: timeout + 1 retry. None se indisponível/falhou."""
     chave = os.environ.get("NVIDIA_API_KEY")
     if not chave:
@@ -226,7 +226,7 @@ def executar(caminho_pdf, caminho_xlsx, caminho_saida):
         return cat, _extrair_categoria(cat, itens, doc.paginas)
 
     resultados = {}
-    with ThreadPoolExecutor(max_workers=3) as ex:
+    with ThreadPoolExecutor(max_workers=2) as ex:
         for cat, res in ex.map(trabalho, cats.items()):
             resultados.update(res)
 
@@ -258,6 +258,7 @@ def executar(caminho_pdf, caminho_xlsx, caminho_saida):
         ("Executado (UTC)", datetime.now(timezone.utc).isoformat()),
         ("Resultado", "; ".join(f"{k}: {v}" for k, v in stats.items())),
         ("Falhas de IA nesta execução", str(ia.FALHAS)),
+        ("Último erro de IA", str(ia.ULTIMO_ERRO)),
         ("Limites", "Sem OCR; revisão automática pega eco e evidência inexistente, mas deslocamento entre campos irmãos exige conferência humana; IA pode oscilar entre execuções."),
     ]
     for i, (a, b) in enumerate(linhas, 1):
