@@ -41,15 +41,33 @@ def _carregar_usuarios():
         dados = {}
     return {str(u).strip().lower(): str(h) for u, h in dados.items() if u and h}
 DEMO_USUARIOS = _carregar_usuarios()
+
+# Identidade visual da instancia (padrao AP; outra marca via env, ex.: WEG)
+CLIENTE_NOME = os.environ.get("CLIENTE_NOME", "AP Consultoria e Projetos")
+CLIENTE_LOGO = os.environ.get("CLIENTE_LOGO", "/static/logo_ap.png")  # "" = nome em texto, sem logo
+CLIENTE_TAGLINE = os.environ.get("CLIENTE_TAGLINE", "Verificação de documentos de engenharia")
+LOGIN_USUARIO = os.environ.get("LOGIN_USUARIO", "ap")
+MARCA_GRAD = os.environ.get("MARCA_GRADIENTE", "linear-gradient(135deg,#2b3550 0%,#1b2333 60%,#131a27 100%)")
+_GRAD_LOGIN_DEFAULT = "linear-gradient(135deg,#2b3550,#131a27)"
+MARCA_GRAD_LOGIN = os.environ.get("MARCA_GRADIENTE", _GRAD_LOGIN_DEFAULT)
+
+def _marca_topo():
+    if CLIENTE_LOGO:
+        return f'<img src="{CLIENTE_LOGO}" alt="{CLIENTE_NOME}">'
+    return (f'<div style="color:#fff;font-size:40px;font-weight:700;letter-spacing:3px;'
+            f'font-family:Calibri,Segoe UI,Arial,sans-serif">{CLIENTE_NOME}</div>')
+
+def _css_marca():
+    return CSS.replace("linear-gradient(135deg, #2b3550 0%, #1b2333 60%, #131a27 100%)", MARCA_GRAD)
 # Hash falso para equalizar tempo de resposta quando o usuario nao existe.
 _HASH_FALSO = "scrypt:32768:8:1$Xq0Yy7p9mJ3kQ2wE$f8d0d3a1c5e6b7a9c0d2e4f6a8b0c1d3e5f7a9b1c3d5e7f9a1b3c5d7e9f1a3b5c7d9e1f3a5b7c9d1e3f5a7b9c1d3e5f7a9b1c3d5e7f9"
 LOGIN = """<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1"><title>Acesso | Demo AP Projetos</title>
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Acesso | Demo {{ cliente }}</title>
 <style>*{box-sizing:border-box}body{margin:0;font-family:Calibri,Segoe UI,Arial,sans-serif;background:#f2f4f8;color:#243148}.top{padding:30px 24px;background:linear-gradient(135deg,#2b3550,#131a27)}.top img{width:255px;max-width:100%;height:auto}.brand{color:#b8c8df;font-size:15px;margin:16px 0 0}.wrap{padding:30px 20px;max-width:460px;margin:auto}.card{background:#fff;border-radius:12px;padding:28px;box-shadow:0 4px 20px #17213112}h1{font-size:26px;margin:0 0 12px}p{font-size:15px;line-height:1.5;color:#586579}label{display:block;font-size:15px;font-weight:600;margin:22px 0 8px}input{width:100%;padding:14px;border:1px solid #a8b6ca;border-radius:6px;font-size:16px}button{width:100%;margin:26px 0 10px;padding:15px;background:#1f6fb2;color:white;border:0;border-radius:6px;font-size:16px;font-weight:600}.note{font-size:13px;color:#6d7788;text-align:center;line-height:1.6}.error{background:#fff0ef;color:#a22b28;padding:12px;border-radius:5px}.show{font-size:14px;display:flex;gap:8px;align-items:center;font-weight:400}.show input{width:18px;height:18px}input:focus,button:focus{outline:3px solid #9ac8ed;outline-offset:2px}</style></head><body>
-<header class="top"><img src="/static/logo_ap.png" alt="AP Consultoria e Projetos"><p class="brand">Verificação de documentos de engenharia</p></header>
-<main class="wrap"><section class="card"><h1>Entrar na demonstração</h1><p>Use o usuário <b>ap</b> e a senha que você definiu no link seguro.</p>
+<header class="top" style="background:{{ grad }}">{{ marca | safe }}<p class="brand">{{ tagline }}</p></header>
+<main class="wrap"><section class="card"><h1>Entrar na demonstração</h1><p>Use o usuário <b>{{ usuario }}</b> e a senha que você definiu no link seguro.</p>
 {% if error %}<p class="error" role="alert">{{error}}</p>{% endif %}
-<form method="post" action="/login"><input type="hidden" name="csrf" value="{{csrf}}"><label for="username">Usuário</label><input id="username" name="username" value="ap" autocomplete="username" required>
+<form method="post" action="/login"><input type="hidden" name="csrf" value="{{csrf}}"><label for="username">Usuário</label><input id="username" name="username" value="{{ usuario }}" autocomplete="username" required>
 <label for="password">Senha</label><input id="password" name="password" type="password" autocomplete="current-password" required>
 <label class="show"><input type="checkbox" onclick="document.getElementById('password').type=this.checked?'text':'password'">Mostrar senha</label>
 <button type="submit">Entrar na plataforma</button></form></section>
@@ -77,7 +95,7 @@ def login():
             session.clear();session["authenticated"] = True;session["usuario"] = usuario;session.permanent = True
             return redirect("/")
         error = "Usuário ou senha incorretos. Confira os dados e tente novamente."
-    return render_template_string(LOGIN, error=error, csrf=session["csrf"])
+    return render_template_string(LOGIN, error=error, csrf=session["csrf"], cliente=CLIENTE_NOME, marca=_marca_topo(), tagline=CLIENTE_TAGLINE, usuario=LOGIN_USUARIO, grad=MARCA_GRAD_LOGIN)
 
 @app.route("/logout", methods=["POST"])
 def logout():
@@ -184,10 +202,10 @@ def home():
                if os.environ.get("NVIDIA_API_KEY")
                else "desligada (heurística simulada nos itens de classe B)")
     return f"""<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1"><title>AP - Verificação de Documentos de Engenharia</title><style>{CSS}</style><style>.spin{{display:inline-block;width:16px;height:16px;border:3px solid #c9d4e4;border-top-color:#1f6fb2;border-radius:50%;animation:giro .8s linear infinite;vertical-align:-3px;margin-right:8px}}@keyframes giro{{to{{transform:rotate(360deg)}}}}.carregando{{display:none;margin-top:12px;font-size:14px;color:#2b3550;font-weight:600}}.barra{{margin-top:10px;height:8px;background:#e3e9f2;border-radius:4px;overflow:hidden}}.barra>div{{height:100%;width:30%;background:#1f6fb2;border-radius:4px;animation:carrega 1.4s ease-in-out infinite}}@keyframes carrega{{0%{{margin-left:-30%}}100%{{margin-left:100%}}}}</style></head>
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>{CLIENTE_NOME} - Verificação de Documentos de Engenharia</title><style>{_css_marca()}</style><style>.spin{{display:inline-block;width:16px;height:16px;border:3px solid #c9d4e4;border-top-color:#1f6fb2;border-radius:50%;animation:giro .8s linear infinite;vertical-align:-3px;margin-right:8px}}@keyframes giro{{to{{transform:rotate(360deg)}}}}.carregando{{display:none;margin-top:12px;font-size:14px;color:#2b3550;font-weight:600}}.barra{{margin-top:10px;height:8px;background:#e3e9f2;border-radius:4px;overflow:hidden}}.barra>div{{height:100%;width:30%;background:#1f6fb2;border-radius:4px;animation:carrega 1.4s ease-in-out infinite}}@keyframes carrega{{0%{{margin-left:-30%}}100%{{margin-left:100%}}}}</style></head>
 <body>
 <header class="topo">
-  <img src="/static/logo_ap.png" alt="AP Consultoria e Projetos">
+  {_marca_topo()}
   <div><div class="t">Verificação de Documentos de Engenharia</div>
   <div class="s">Módulo 1 &middot; Check-list FRM-SEMEC-001 - Parecer Técnico &middot; MVP</div></div>
 </header>
@@ -452,10 +470,10 @@ def _roda_orcamento(jid):
 
 
 PAG_ORCAMENTO = """<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1"><title>Extração de checklist de orçamento | AP (teste)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Extração de checklist de orçamento | __CLIENTE__ (teste)</title>
 <style>__CSS__ .spin{display:inline-block;width:16px;height:16px;border:3px solid #c9d4e4;border-top-color:#1f6fb2;border-radius:50%;animation:giro .8s linear infinite;vertical-align:-3px;margin-right:8px}@keyframes giro{to{transform:rotate(360deg)}}.barra{margin-top:10px;height:8px;background:#e3e9f2;border-radius:4px;overflow:hidden}.barra>div{height:100%;width:30%;background:#1f6fb2;border-radius:4px;animation:carrega 1.4s ease-in-out infinite}@keyframes carrega{0%{margin-left:-30%}100%{margin-left:100%}}.warn{background:#fdf6e3;border:1px solid #e3d193;border-radius:8px;padding:12px 16px;font-size:12.5px;color:#5d5426;line-height:1.55;margin-top:14px}label{display:block;font-size:13.5px;font-weight:600;margin:14px 0 6px;color:#2b3550}</style></head>
 <body>
-<header class="topo"><img src="/static/logo_ap.png" alt="AP Consultoria e Projetos">
+<header class="topo">__MARCA__
 <div><div class="t">Extração de checklist de orçamento</div>
 <div class="s">Módulo experimental &middot; ambiente de teste (staging) &middot; não é o app da apresentação</div></div></header>
 <div class="wrap">
@@ -507,7 +525,7 @@ f.addEventListener("submit",function(ev){
 
 @app.route("/orcamento")
 def orcamento():
-    return PAG_ORCAMENTO.replace("__CSS__", CSS)
+    return (PAG_ORCAMENTO.replace("__CSS__", _css_marca()).replace("__MARCA__", _marca_topo()).replace("__CLIENTE__", CLIENTE_NOME))
 
 
 @app.route("/orcamento/novo", methods=["POST"])
