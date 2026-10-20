@@ -93,7 +93,7 @@ def gerar_relatorio(registro, caminho_pdf):
         story.append(Paragraph(linha, sub))
     story.append(Paragraph(
         "Limites: check-list transcrito de um print (só a aba Parecer Técnico); "
-        "classe B simulada por heurística, sem API de IA; classe C nunca é decidida pelo motor. "
+        "classe B: itens textuais usam IA (NVIDIA NIM) quando disponível; atualização de logos exige conferência visual. Classe C nunca é decidida pelo motor. "
         "Documentos de outras organizações não seguem o padrão de numeração/carimbo da AP - "
         "achados desse tipo indicam diferença de padrão, não necessariamente erro no documento.", sub))
     doc.build(story)

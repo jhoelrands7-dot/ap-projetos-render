@@ -53,7 +53,7 @@ def _campo(doc, rotulo):
 def _resultado(item, secao, descricao, classe, status, obs, evidencias, decisao_por=None):
     if decisao_por is None:
         decisao_por = {"A": "regra determinística",
-                       "B": "heurística determinística SIMULADA (sem API de IA no ambiente; ponto de troca para LLM)",
+                       "B": "heurística de presença de imagens; atualização dos logos exige base oficial e conferência visual",
                        "C": "não decidido pelo motor (julgamento humano)"}[classe]
     return {"item": item, "secao": secao, "descricao": descricao,
             "classe": classe, "status": status, "observacao": obs,
