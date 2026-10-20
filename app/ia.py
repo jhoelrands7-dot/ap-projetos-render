@@ -94,7 +94,7 @@ TRECHO DO DOCUMENTO:
 \"\"\""""
 
 
-def avaliar_classe_b(item, descricao, trecho, timeout=60, tentativas=2):
+def avaliar_classe_b(item, descricao, trecho, timeout=45, tentativas=2):
     """Chama o LLM. Retorna dict {status, observacao, evidencia} ou None (fallback).
     1 retry: a conta gratuita do NIM oscila de latência e um estouro isolado
     não deve derrubar o item para a heurística."""
@@ -154,7 +154,7 @@ RESULTADOS DO CHECK-LIST:
 {itens_json}"""
 
 
-def comentar(resultados, timeout=60):
+def comentar(resultados, timeout=45):
     """Gera resumo geral + comentário por item via LLM. Retorna dict ou None (fallback)."""
     chave = os.environ.get("NVIDIA_API_KEY")
     if not chave:
