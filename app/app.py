@@ -50,6 +50,7 @@ LOGIN_USUARIO = os.environ.get("LOGIN_USUARIO", "ap")
 MARCA_GRAD = os.environ.get("MARCA_GRADIENTE", "linear-gradient(135deg,#2b3550 0%,#1b2333 60%,#131a27 100%)")
 _GRAD_LOGIN_DEFAULT = "linear-gradient(135deg,#2b3550,#131a27)"
 MARCA_GRAD_LOGIN = os.environ.get("MARCA_GRADIENTE", _GRAD_LOGIN_DEFAULT)
+CLIENTE_NOTA = os.environ.get("CLIENTE_NOTA", "")  # nota extra na tela de login (ex.: disclaimer de demonstracao)
 
 def _marca_topo():
     if CLIENTE_LOGO:
@@ -71,7 +72,8 @@ LOGIN = """<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
 <label for="password">Senha</label><input id="password" name="password" type="password" autocomplete="current-password" required>
 <label class="show"><input type="checkbox" onclick="document.getElementById('password').type=this.checked?'text':'password'">Mostrar senha</label>
 <button type="submit">Entrar na plataforma</button></form></section>
-<p class="note">MVP • Módulo 1 • Parecer Técnico<br>Acesso restrito. Endereço temporário para testes.<br>Trechos dos documentos são enviados a provedor externo de IA (OpenRouter/NVIDIA).<br><br><b>Ambiente de teste:</b> a 1ª abertura pode levar cerca de 1 minuto (o servidor dorme após 15 min sem acesso). Os resultados das extrações são reais.</p></main></body></html>"""
+<p class="note">MVP • Módulo 1 • Parecer Técnico<br>Acesso restrito. Endereço temporário para testes.<br>Trechos dos documentos são enviados a provedor externo de IA (OpenRouter/NVIDIA).<br><br><b>Ambiente de teste:</b> a 1ª abertura pode levar cerca de 1 minuto (o servidor dorme após 15 min sem acesso). Os resultados das extrações são reais.</p>
+{% if nota %}<p class="note" style="margin-top:6px">{{ nota }}</p>{% endif %}</main></body></html>"""
 
 @app.before_request
 def _auth_demo():
@@ -95,7 +97,7 @@ def login():
             session.clear();session["authenticated"] = True;session["usuario"] = usuario;session.permanent = True
             return redirect("/")
         error = "Usuário ou senha incorretos. Confira os dados e tente novamente."
-    return render_template_string(LOGIN, error=error, csrf=session["csrf"], cliente=CLIENTE_NOME, marca=_marca_topo(), tagline=CLIENTE_TAGLINE, usuario=LOGIN_USUARIO, grad=MARCA_GRAD_LOGIN)
+    return render_template_string(LOGIN, error=error, csrf=session["csrf"], cliente=CLIENTE_NOME, marca=_marca_topo(), tagline=CLIENTE_TAGLINE, usuario=LOGIN_USUARIO, grad=MARCA_GRAD_LOGIN, nota=CLIENTE_NOTA)
 
 @app.route("/logout", methods=["POST"])
 def logout():
