@@ -206,38 +206,77 @@ def home():
 <div class="card" style="margin-top:18px">
  <h2>Verificar vários documentos (até 5)</h2>
  <div class="drop">
-  <input type="file" id="fila-input" multiple accept=".pdf,.docx,.xlsx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/msword,application/vnd.ms-excel">
-  <div id="fila-selecao" style="font-size:13px;color:#445;margin-top:6px">Nenhum arquivo selecionado.</div>
-  <p style="color:#667;font-size:12.5px;margin:12px 0">Selecione até 5 arquivos (PDF, DOCX ou XLSX). Eles são enviados <b>um por vez</b>, nesta ordem, e cada relatório é liberado assim que fica pronto. Cada documento leva cerca de 1 a 2 minutos.</p>
+  <input type="file" id="fila-input" multiple accept=".pdf,.docx,.xlsx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/msword,application/vnd.ms-excel" style="display:none">
+  <button class="btn" id="fila-add" type="button" style="background:#4a5b74">Adicionar documento</button>
+  <div id="fila-selecao" style="font-size:13px;color:#445;margin-top:10px">Nenhum documento na fila.</div>
+  <ul id="fila-pendente" style="list-style:none;padding:0;margin:6px 0 0;font-size:13.5px"></ul>
+  <p style="color:#667;font-size:12.5px;margin:12px 0">Toque em <b>Adicionar documento</b> e escolha <b>um arquivo por vez</b> (PDF, DOCX ou XLSX), até 5. Eles são enviados um por vez, nesta ordem, e cada relatório é liberado assim que fica pronto. Cada documento leva cerca de 1 a 2 minutos.</p>
   <button class="btn" id="fila-btn" type="button">Verificar em fila</button>
  </div>
+ <div id="fila-erro" role="alert" style="display:none;background:#fff0ef;color:#a22b28;padding:10px;border-radius:5px;margin-top:10px;font-size:13.5px"></div>
  <div id="fila-progresso" style="font-size:13.5px;margin-top:10px"></div>
  <ul id="fila-lista" style="list-style:none;padding:0;margin:10px 0 0;font-size:13.5px"></ul>
+ <details style="margin-top:14px"><summary style="cursor:pointer;font-size:13px;color:#445">A fila não reagiu neste aparelho? Use o envio alternativo</summary>
+  <form method="post" action="/verificar-lote" enctype="multipart/form-data" style="margin-top:8px">
+   <input type="file" name="arquivos" multiple accept=".pdf,.docx,.xlsx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/msword,application/vnd.ms-excel" required>
+   <p style="color:#667;font-size:12px;margin:8px 0">Envio direto de até 3 arquivos de uma vez, sem a fila. Esta página pode ficar carregando por alguns minutos; os links aparecem ao final.</p>
+   <button class="btn" type="submit">Enviar em lote</button>
+  </form>
+ </details>
+ <div style="font-size:11px;color:#9aa4b2;margin-top:10px">versão da página: fila-2026-10-20a</div>
 </div>
 <script>
 (function(){{
+ var BUILD="fila-2026-10-20a";
  var inp=document.getElementById("fila-input"),btn=document.getElementById("fila-btn"),
+     add=document.getElementById("fila-add"),
      prog=document.getElementById("fila-progresso"),lista=document.getElementById("fila-lista"),
-     sel=document.getElementById("fila-selecao");
+     sel=document.getElementById("fila-selecao"),pend=document.getElementById("fila-pendente");
+ window.addEventListener("error",function(e){{
+  var av=document.getElementById("fila-erro");
+  if(av){{av.style.display="block";av.textContent="A fila encontrou um erro neste navegador ("+(e.message||"desconhecido")+"). Use o envio alternativo abaixo. ["+BUILD+"]";}}
+ }});
+ var arqs=[];
  function mostraSel(){{
-  var fs=inp.files||[];
-  if(!fs.length){{sel.textContent="Nenhum arquivo selecionado.";return;}}
-  var nomes=[];
-  for(var k=0;k<fs.length;k++){{nomes.push((k+1)+". "+fs[k].name+" ("+(fs[k].size/1048576).toFixed(1)+" MB)");}}
-  sel.innerHTML="<b>"+fs.length+" arquivo(s) selecionado(s)"+(fs.length>5?" - só os 5 primeiros entram na fila":"")+":</b><br>"+nomes.join("<br>");
+  if(!arqs.length){{sel.textContent="Nenhum documento na fila.";}}
+  else{{sel.innerHTML="<b>"+arqs.length+" de 5 na fila:</b>";}}
+  pend.innerHTML="";
+  arqs.forEach(function(f,k){{
+   var li=document.createElement("li");li.style.cssText="padding:6px 0;border-bottom:1px solid #e6eaf1";
+   li.innerHTML="<b>"+(k+1)+". "+f.name+"</b> ("+(f.size/1048576).toFixed(1)+" MB) ";
+   var x=document.createElement("a");x.href="#";x.textContent="remover";x.style.cssText="color:#a22b28;margin-left:8px";
+   x.addEventListener("click",function(ev){{ev.preventDefault();arqs.splice(k,1);mostraSel();}});
+   li.appendChild(x);pend.appendChild(li);
+  }});
+  add.disabled=arqs.length>=5;
+  add.textContent=arqs.length>=5?"Fila cheia (5)":"Adicionar documento";
  }}
- inp.addEventListener("change",mostraSel);mostraSel();
+ add.addEventListener("click",function(){{inp.click();}});
+ function coleta(){{
+  try{{
+   var fs=inp.files||[],pegou=0;
+   for(var q=0;q<fs.length;q++){{
+    var f=fs[q];
+    if(arqs.length>=5){{break;}}
+    if(arqs.some(function(a){{return a.name===f.name&&a.size===f.size;}})){{continue;}}
+    arqs.push(f);pegou++;
+   }}
+   if(fs.length&&!pegou&&arqs.length>=5){{sel.innerHTML="<b>Fila cheia:</b> remova um documento para adicionar outro.";}}
+  }}catch(e){{prog.textContent="Não consegui ler os arquivos escolhidos ("+e.message+"). Use o envio alternativo abaixo. ["+BUILD+"]";}}
+  inp.value="";mostraSel();
+ }}
+ inp.addEventListener("change",coleta);
+ inp.addEventListener("input",coleta);
+ mostraSel();
  btn.addEventListener("click",function(){{
-  var arqs=Array.prototype.slice.call(inp.files||[]).slice(0,5);
-  if(!arqs.length){{prog.textContent="Selecione de 1 a 5 arquivos primeiro.";return;}}
-  if((inp.files||[]).length>5){{prog.textContent="Mais de 5 selecionados: só os 5 primeiros entram na fila.";}}
-  btn.disabled=true;lista.innerHTML="";
+  if(!arqs.length){{prog.textContent="Adicione de 1 a 5 documentos primeiro.";return;}}
+  btn.disabled=true;add.disabled=true;lista.innerHTML="";
   var itens=arqs.map(function(a,i){{
    var li=document.createElement("li");li.style.cssText="padding:7px 0;border-bottom:1px solid #e6eaf1";
    li.textContent=(i+1)+". "+a.name+" - aguardando";lista.appendChild(li);return li;}});
   var i=0;
   function passo(){{
-   if(i>=arqs.length){{prog.innerHTML="<b>Fila concluída.</b> Os relatórios ficam no histórico abaixo enquanto o serviço estiver acordado.";btn.disabled=false;return;}}
+   if(i>=arqs.length){{prog.innerHTML="<b>Fila concluída.</b> Os relatórios ficam no histórico abaixo enquanto o serviço estiver acordado.";btn.disabled=false;arqs=[];mostraSel();return;}}
    var a=arqs[i],li=itens[i],n=i+1,ini=Date.now(),tent=0;
    function rot(){{
     var s=Math.floor((Date.now()-ini)/1000),m=Math.floor(s/60),ss=("0"+(s%60)).slice(-2);
@@ -275,6 +314,14 @@ Documentos de outras organizações não seguem o padrão AP de numeração/cari
 </div></body></html>"""
 
 
+@app.after_request
+def _sem_cache_html(resp):
+    if resp.mimetype == "text/html":
+        resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
 @app.route("/saude-ia")
 def saude_ia():
     return ia.saude()
@@ -301,6 +348,43 @@ def verificar():
         return {"slug": slug, "url": f"/relatorio/{slug}", "resumo": auditoria.resumo_status(registro["resultados"])}
     session["ultimo_relatorio"] = slug
     return redirect(f"/relatorio/{slug}")
+
+
+@app.route("/verificar-lote", methods=["POST"])
+def verificar_lote():
+    arquivos = [a for a in request.files.getlist("arquivos") if a and a.filename][:3]
+    if not arquivos:
+        return redirect("/")
+    saidas = []
+    for arq in arquivos:
+        ext = os.path.splitext(arq.filename)[1].lower()
+        if ext not in EXTENSOES:
+            saidas.append((arq.filename, None, "formato não suportado"))
+            continue
+        slug = re.sub(r"[^a-z0-9]+", "-", os.path.splitext(arq.filename)[0].lower().encode("ascii", "ignore").decode()).strip("-")[:60]
+        slug = (slug or "documento") + "-" + str(int(time.time()))[-5:]
+        caminho = os.path.join(UPLOADS, slug + ext)
+        arq.save(caminho)
+        try:
+            registro, _ = auditoria.verificar_reprodutibilidade(caminho, origem="upload em lote via interface web")
+            registro["documento"]["nome"] = arq.filename
+            with open(os.path.join(SAIDA, f"{slug}.json"), "w") as f:
+                json.dump(registro, f, ensure_ascii=False, indent=2)
+            relatorio.gerar_relatorio(registro, os.path.join(SAIDA, f"{slug}.pdf"))
+            saidas.append((arq.filename, slug, None))
+        except Exception as e:
+            saidas.append((arq.filename, None, str(e)[:120]))
+    itens = "".join(
+        f'<li style="padding:8px 0;border-bottom:1px solid #e6eaf1"><b>{nome}</b> - '
+        + (f'<a href="/relatorio/{slug}">abrir relatório</a>' if slug else f'<span style="color:#a22b28">falhou ({erro})</span>')
+        + "</li>"
+        for nome, slug, erro in saidas)
+    return f"""<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Envio em lote - AP</title><style>{CSS}</style></head>
+<body><div class="wrap"><div class="card"><h2>Envio em lote concluído</h2>
+<ul style="list-style:none;padding:0;font-size:14px">{itens}</ul>
+<p style="margin-top:14px"><a href="/">Voltar para a página inicial</a></p>
+</div></div></body></html>"""
 
 
 @app.route("/relatorio/<slug>")
