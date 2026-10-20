@@ -25,13 +25,24 @@ app = Flask(__name__)
 
 # --- Login da demo, com sessao e senha definida no cofre ---
 from flask import session, render_template_string
-import secrets, hmac
+import secrets, hmac, json as _json
 from datetime import timedelta
+from werkzeug.security import check_password_hash
 app.secret_key = os.environ.get("DEMO_SESSION_KEY") or secrets.token_hex(32)
 app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SECURE=True,
                   SESSION_COOKIE_SAMESITE="Lax", PERMANENT_SESSION_LIFETIME=timedelta(hours=8),
                   MAX_CONTENT_LENGTH=25 * 1024 * 1024)
-DEMO_SENHA = os.environ.get("DEMO_SENHA", "")
+# Mapa usuario -> hash de senha (scrypt via werkzeug). Nunca senhas em texto.
+def _carregar_usuarios():
+    bruto = os.environ.get("DEMO_USUARIOS", "")
+    try:
+        dados = _json.loads(bruto) if bruto else {}
+    except ValueError:
+        dados = {}
+    return {str(u).strip().lower(): str(h) for u, h in dados.items() if u and h}
+DEMO_USUARIOS = _carregar_usuarios()
+# Hash falso para equalizar tempo de resposta quando o usuario nao existe.
+_HASH_FALSO = "scrypt:32768:8:1$Xq0Yy7p9mJ3kQ2wE$f8d0d3a1c5e6b7a9c0d2e4f6a8b0c1d3e5f7a9b1c3d5e7f9a1b3c5d7e9f1a3b5c7d9e1f3a5b7c9d1e3f5a7b9c1d3e5f7a9b1c3d5e7f9"
 LOGIN = """<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>Acesso | Demo AP Projetos</title>
 <style>*{box-sizing:border-box}body{margin:0;font-family:Calibri,Segoe UI,Arial,sans-serif;background:#f2f4f8;color:#243148}.top{padding:30px 24px;background:linear-gradient(135deg,#2b3550,#131a27)}.top img{width:255px;max-width:100%;height:auto}.brand{color:#b8c8df;font-size:15px;margin:16px 0 0}.wrap{padding:30px 20px;max-width:460px;margin:auto}.card{background:#fff;border-radius:12px;padding:28px;box-shadow:0 4px 20px #17213112}h1{font-size:26px;margin:0 0 12px}p{font-size:15px;line-height:1.5;color:#586579}label{display:block;font-size:15px;font-weight:600;margin:22px 0 8px}input{width:100%;padding:14px;border:1px solid #a8b6ca;border-radius:6px;font-size:16px}button{width:100%;margin:26px 0 10px;padding:15px;background:#1f6fb2;color:white;border:0;border-radius:6px;font-size:16px;font-weight:600}.note{font-size:13px;color:#6d7788;text-align:center;line-height:1.6}.error{background:#fff0ef;color:#a22b28;padding:12px;border-radius:5px}.show{font-size:14px;display:flex;gap:8px;align-items:center;font-weight:400}.show input{width:18px;height:18px}input:focus,button:focus{outline:3px solid #9ac8ed;outline-offset:2px}</style></head><body>
@@ -59,10 +70,11 @@ def login():
     error = None
     if request.method == "POST":
         valid_csrf = hmac.compare_digest(request.form.get("csrf", ""), session["csrf"])
-        valid_user = hmac.compare_digest(request.form.get("username", ""), "ap")
-        valid_pass = bool(DEMO_SENHA) and hmac.compare_digest(request.form.get("password", ""), DEMO_SENHA)
-        if valid_csrf and valid_user and valid_pass:
-            session.clear();session["authenticated"] = True;session.permanent = True
+        usuario = request.form.get("username", "").strip().lower()
+        senha_hash = DEMO_USUARIOS.get(usuario, _HASH_FALSO)
+        valid_pass = check_password_hash(senha_hash, request.form.get("password", "")) and usuario in DEMO_USUARIOS
+        if valid_csrf and valid_pass:
+            session.clear();session["authenticated"] = True;session["usuario"] = usuario;session.permanent = True
             return redirect("/")
         error = "Usuário ou senha incorretos. Confira os dados e tente novamente."
     return render_template_string(LOGIN, error=error, csrf=session["csrf"])
