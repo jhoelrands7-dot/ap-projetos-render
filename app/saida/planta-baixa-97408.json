@@ -1,0 +1,189 @@
+{
+  "documento": {
+    "nome": "planta_baixa.pdf",
+    "caminho": "/tmp/ap_git/app/uploads/planta-baixa-97408.pdf",
+    "sha256": "baf0d8f7d3596c896f41f9586bf7ee81e29e5a7ae8816b52677fde4b4728383d",
+    "formato": "pdf",
+    "paginas_ou_abas": 1,
+    "origem_url": "upload via interface web"
+  },
+  "regras": {
+    "versao": "FRM-SEMEC-001-parecer-tecnico v1.1 (transcrito do print do slide 12 do PPTX da AP; avaliadores adaptados para formatos de documentos reais em 2026-10-19)",
+    "motor": "motor-mvp v1.3 (2026-10-20; bloqueia reentrada de relatórios emitidos; comentários de IA filtrados por status/classe e redação neutra; seed fixo e respostas brutas na auditoria; regras de status inalteradas)",
+    "fonte_checklist": "print da planilha FRM-SEMEC-001 (slide 12 do PPTX da AP); planilha original não fornecida"
+  },
+  "ia": {
+    "modelo": "meta/llama-3.2-11b-vision-instruct",
+    "chamadas": 0,
+    "falhas": 0,
+    "ultimo_erro": null
+  },
+  "execucao": {
+    "inicio_utc": "2026-10-20T11:56:48.943298+00:00",
+    "fim_utc": "2026-10-20T11:56:48.947284+00:00",
+    "python": "3.10.12",
+    "plataforma": "Linux-6.1.158+-x86_64-with-glibc2.35"
+  },
+  "resultados": [
+    {
+      "item": "PAD-1.0",
+      "secao": "PADRONIZAÇÃO",
+      "descricao": "O PADRÃO UTILIZADO É O MAIS ATUAL?",
+      "classe": "C",
+      "status": "EVIDÊNCIA INSUFICIENTE",
+      "observacao": "Classe C: exige a base de templates vigentes da AP (dado externo ao documento). O motor só coleta a referência de formulário citada, se houver.",
+      "decisao_por": "não decidido pelo motor (julgamento humano)",
+      "evidencias": []
+    },
+    {
+      "item": "PAD-1.1",
+      "secao": "PADRONIZAÇÃO",
+      "descricao": "O CONTROLE E A DESCRIÇÃO DE REVISÃO ESTÃO PREENCHIDO CORRETAMENTE?",
+      "classe": "A",
+      "status": "NÃO CONFORME",
+      "observacao": "Seção de controle de revisões (índice/controle/histórico) não encontrada; o padrão AP exige controle e descrição de revisão.",
+      "decisao_por": "regra determinística",
+      "evidencias": []
+    },
+    {
+      "item": "PAD-1.2",
+      "secao": "PADRONIZAÇÃO",
+      "descricao": "OS LOGOS DA AP E CLIENTE ESTÃO ATUALIZADOS?",
+      "classe": "B",
+      "status": "NÃO CONFORME",
+      "observacao": "Nenhum logotipo/imagem detectado no documento. SIMULADO (classe B): heurística só detecta a PRESENÇA de imagem; 'atualizado' exige comparação visual com a base oficial de logos (IA de visão ou humano). Em produção: chamada a LLM de visão.",
+      "decisao_por": "heurística simulada (classe B)",
+      "evidencias": []
+    },
+    {
+      "item": "PAD-1.3",
+      "secao": "PADRONIZAÇÃO",
+      "descricao": "O RESPONSÁVEL TÉCNICO DO DOCUMENTO ESTÁ CORRETO? E O Nº DO CREA?",
+      "classe": "A",
+      "status": "NÃO CONFORME",
+      "observacao": "responsável técnico não identificado; número de CREA não encontrado no documento. Classe A: presença e formato do registro. Titularidade/registro ativo é classe C (consulta ao cadastro do CREA + humano).",
+      "decisao_por": "regra determinística",
+      "evidencias": []
+    },
+    {
+      "item": "PAD-1.4",
+      "secao": "PADRONIZAÇÃO",
+      "descricao": "A ORDEM DE SERVIÇO DO PROJETO ESTÁ CORRETA?",
+      "classe": "A",
+      "status": "NÃO CONFORME",
+      "observacao": "Ordem de serviço (AS/OS) ausente ou vazia. Em documento fora do padrão AP, o campo pode simplesmente não existir. Classe A: presença e formato. Correção contra o contrato do projeto é classe C (dado externo).",
+      "decisao_por": "regra determinística",
+      "evidencias": []
+    },
+    {
+      "item": "PAD-1.5",
+      "secao": "PADRONIZAÇÃO",
+      "descricao": "NOME DO CLIENTE, DO PROGRAMA, DA ÁREA E DA UNIDADE ESTÃO CORRETOS?",
+      "classe": "A",
+      "status": "NÃO CONFORME",
+      "observacao": "CLIENTE não encontrado; PROGRAMA não encontrado; ÁREA não encontrado; UNIDADE não encontrado. Classe A: presença/preenchimento dos campos do carimbo AP. Correção dos nomes contra o planejamento do projeto é classe C (dado externo).",
+      "decisao_por": "regra determinística",
+      "evidencias": []
+    },
+    {
+      "item": "PAD-1.6",
+      "secao": "PADRONIZAÇÃO",
+      "descricao": "TÍTULO DO DOCUMENTO ESTÁ CORRETO E CONFORME LISTA DO PLANEJAMENTO?",
+      "classe": "C",
+      "status": "EVIDÊNCIA INSUFICIENTE",
+      "observacao": "Campo TÍTULO (carimbo AP) não existe; primeira linha do documento: 'Documento de teste 2 - planta_baixa.pdf'. Classe C: exige a lista de documentos do planejamento (dado externo). O motor extrai o título declarado para o humano conferir.",
+      "decisao_por": "não decidido pelo motor (julgamento humano)",
+      "evidencias": [
+        {
+          "pagina": 1,
+          "local": "página 1",
+          "trecho": "Documento de teste 2 - planta_baixa.pdf"
+        }
+      ]
+    },
+    {
+      "item": "PAD-1.7",
+      "secao": "PADRONIZAÇÃO",
+      "descricao": "O NÚMERO DO DOCUMENTO E DO ARQUIVO ELETRÔNICO ESTÃO CORRETOS?",
+      "classe": "A",
+      "status": "NÃO CONFORME",
+      "observacao": "Número de documento no padrão AP (ex.: RL-3433.02-5420-940-APJ-001) não encontrado. Documentos de outras organizações usam outra numeração.",
+      "decisao_por": "regra determinística",
+      "evidencias": []
+    },
+    {
+      "item": "PAD-1.8",
+      "secao": "PADRONIZAÇÃO",
+      "descricao": "O NÚMERO DE FOLHAS, NA CAPA E EM CADA PÁGINA, ESTÁ CORRETO?",
+      "classe": "A",
+      "status": "NÃO CONFORME",
+      "observacao": "Nenhuma página declara numeração 'folha/página x de y'.",
+      "decisao_por": "regra determinística",
+      "evidencias": []
+    },
+    {
+      "item": "PAD-1.9",
+      "secao": "PADRONIZAÇÃO",
+      "descricao": "AS ALTERAÇÕES OCORRIDAS NO DOCUMENTO IMPACTAM NOS DOCUMENTOS DE OUTRAS DISCIPLINAS? ESTAS DISCIPLINAS FORAM INFORMADAS?",
+      "classe": "B",
+      "status": "EVIDÊNCIA INSUFICIENTE",
+      "observacao": "Nenhuma disciplina citada; não dá para saber se houve impacto não informado. SIMULADO (classe B): heurística busca menções a outras disciplinas; avaliar impacto real exige contexto do pacote (Team Check, M2).",
+      "decisao_por": "heurística simulada (classe B)",
+      "evidencias": []
+    },
+    {
+      "item": "DT-1.0",
+      "secao": "DESCRIÇÃO TÉCNICA",
+      "descricao": "TAG?",
+      "classe": "A",
+      "status": "EVIDÊNCIA INSUFICIENTE",
+      "observacao": "Nenhuma TAG encontrada. Pode não haver TAGs neste documento - confirmar com a disciplina (classe C).",
+      "decisao_por": "regra determinística",
+      "evidencias": []
+    },
+    {
+      "item": "DT-1.1",
+      "secao": "DESCRIÇÃO TÉCNICA",
+      "descricao": "PROPOSTA(S) TÉCNICA(S)?",
+      "classe": "B",
+      "status": "NÃO CONFORME",
+      "observacao": "Nenhuma seção de proposta técnica/parecer localizada. SIMULADO (classe B): heurística exige seção de proposta/parecer com conteúdo substantivo (>= 200 caracteres). Em produção: LLM avalia se a proposta atende ao pedido.",
+      "decisao_por": "heurística simulada (classe B)",
+      "evidencias": []
+    },
+    {
+      "item": "DT-1.2",
+      "secao": "DESCRIÇÃO TÉCNICA",
+      "descricao": "DOCUMENTO(S) DE ESCLARECIMENTO?",
+      "classe": "B",
+      "status": "EVIDÊNCIA INSUFICIENTE",
+      "observacao": "Nenhuma menção a documento de esclarecimento. SIMULADO (classe B): heurística busca menção a esclarecimentos; se o documento DEVERIA citar algum é confirmação humana (classe C).",
+      "decisao_por": "heurística simulada (classe B)",
+      "evidencias": []
+    },
+    {
+      "item": "DT-1.3",
+      "secao": "DESCRIÇÃO TÉCNICA",
+      "descricao": "DOCUMENTOS E NORMAS DE REFERÊNCIA?",
+      "classe": "A",
+      "status": "NÃO CONFORME",
+      "observacao": "Seção de referências/normas não encontrada.",
+      "decisao_por": "regra determinística",
+      "evidencias": []
+    }
+  ],
+  "log": [
+    "2026-10-20T11:56:48.943298+00:00 início da verificação de '/tmp/ap_git/app/uploads/planta-baixa-97408.pdf'",
+    "sha256 do documento: baf0d8f7d3596c896f41f9586bf7ee81e29e5a7ae8816b52677fde4b4728383d",
+    "extração: formato=pdf, páginas/abas=1",
+    "motor motor-mvp v1.3 (2026-10-20; bloqueia reentrada de relatórios emitidos; comentários de IA filtrados por status/classe e redação neutra; seed fixo e respostas brutas na auditoria; regras de status inalteradas): 14 itens avaliados em 0.000s",
+    "análise auxiliar de IA (resumo + comentários): indisponível",
+    "2026-10-20T11:56:48.947284+00:00 fim da verificação",
+    "reprodutibilidade: duas execuções idênticas = True"
+  ],
+  "reprodutibilidade": {
+    "duas_execucoes_identicas": true,
+    "nota": "comparação exclui carimbos de data/hora e o bloco analise_ia (texto auxiliar gerado por IA, não participa das decisões de status)",
+    "hash_do_resultado": "8ba190b7c02d71f19c28ec7f1052aed2b46504d2d8ac07459ca7b4a2e26a0e47"
+  }
+}
