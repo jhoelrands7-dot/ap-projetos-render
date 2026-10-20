@@ -4,7 +4,7 @@ reprodutibilidade. Tudo que o relatório mostra sai daqui."""
 import hashlib, json, platform, sys
 from datetime import datetime, timezone
 
-import extratores, motor
+import extratores, motor, ia
 from checklist_parecer_tecnico import VERSAO_REGRAS
 
 
@@ -29,9 +29,11 @@ def executar_verificacao(caminho, origem=None):
     resultados = motor.verificar(doc)
     t1 = datetime.now(timezone.utc)
     log.append(f"motor {motor.MOTOR_VERSAO}: {len(resultados)} itens avaliados em {(t1-t0).total_seconds():.3f}s")
+    analise_ia = ia.comentar(resultados) if ia.disponivel() else None
+    log.append("análise auxiliar de IA (resumo + comentários): " + ("gerada" if analise_ia else "indisponível"))
     fim = datetime.now(timezone.utc)
     log.append(f"{fim.isoformat()} fim da verificação")
-    return {
+    registro = {
         "documento": {
             "nome": caminho.rsplit("/", 1)[-1],
             "caminho": caminho,
@@ -54,6 +56,9 @@ def executar_verificacao(caminho, origem=None):
         "resultados": resultados,
         "log": log,
     }
+    if analise_ia:
+        registro["analise_ia"] = analise_ia
+    return registro
 
 
 def resumo_status(resultados):
@@ -69,6 +74,7 @@ def _sem_relógio(registro):
     copia["execucao"]["inicio_utc"] = ""
     copia["execucao"]["fim_utc"] = ""
     copia["log"] = [l for l in copia["log"] if "início" not in l and "fim" not in l and "avaliados em" not in l]
+    copia.pop("analise_ia", None)  # texto auxiliar gerado por IA: não é decisão e varia entre execuções
     return copia
 
 
@@ -81,7 +87,7 @@ def verificar_reprodutibilidade(caminho, origem=None):
     ok = hashlib.sha256(j1.encode()).hexdigest() == hashlib.sha256(j2.encode()).hexdigest()
     r1["reprodutibilidade"] = {
         "duas_execucoes_identicas": ok,
-        "nota": "comparação exclui carimbos de data/hora da execução",
+        "nota": "comparação exclui carimbos de data/hora e o bloco analise_ia (texto auxiliar gerado por IA, não participa das decisões de status)",
         "hash_do_resultado": hashlib.sha256(j1.encode()).hexdigest(),
     }
     r1["log"].append(f"reprodutibilidade: duas execuções idênticas = {ok}")

@@ -18,7 +18,7 @@ import re
 import ia
 from checklist_parecer_tecnico import CHECKLIST
 
-MOTOR_VERSAO = "motor-mvp v1.1 (2026-10-19)"
+MOTOR_VERSAO = "motor-mvp v1.2 (2026-10-19; adiciona análise auxiliar de IA, decisões de status inalteradas)"
 
 CONFORME = "CONFORME"
 NAO_CONFORME = "NÃO CONFORME"

@@ -68,3 +68,59 @@ def avaliar_classe_b(item, descricao, trecho, timeout=30):
                 "evidencia": (res.get("evidencia") or "")[:300]}
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, KeyError, ValueError):
         return None
+
+
+PROMPT_COMENTARIO = """Você é um revisor técnico sênior de engenharia escrevendo para outro engenheiro.
+Abaixo está o resultado de um check-list de Parecer Técnico (FRM-SEMEC-001) aplicado a um documento, já com status decididos pelo motor (regras, IA ou indicação para humano).
+
+Sua tarefa NÃO é mudar nenhum status: é explicar, em português claro, o que cada achado significa na prática e o que fazer a respeito.
+
+Responda SOMENTE com um JSON válido, sem texto fora do JSON, neste formato:
+{{"resumo": "2 a 4 frases com a leitura geral do documento: principais problemas, o que corrigir primeiro e recomendação",
+ "comentarios": {{"<ITEM>": "1 a 2 frases de análise prática do item"}}}}
+
+Regras: nunca contradiga o status decidido; não invente fatos fora das evidências mostradas; seja direto; use os códigos de ITEM exatamente como recebidos.
+
+RESULTADOS DO CHECK-LIST:
+{itens_json}"""
+
+
+def comentar(resultados, timeout=60):
+    """Gera resumo geral + comentário por item via LLM. Retorna dict ou None (fallback)."""
+    chave = os.environ.get("NVIDIA_API_KEY")
+    if not chave:
+        return None
+    itens = []
+    for r in resultados:
+        ev = r["evidencias"][0]["trecho"][:200] if r.get("evidencias") else ""
+        itens.append({"item": r["item"], "descricao": r["descricao"], "status": r["status"],
+                      "observacao": r["observacao"][:300], "evidencia": ev})
+    corpo = {
+        "model": MODELO,
+        "messages": [{"role": "user", "content": PROMPT_COMENTARIO.format(
+            itens_json=json.dumps(itens, ensure_ascii=False))}],
+        "temperature": 0,
+        "max_tokens": 4000,
+    }
+    req = urllib.request.Request(
+        ENDPOINT,
+        data=json.dumps(corpo).encode(),
+        headers={"Authorization": f"Bearer {chave}", "Content-Type": "application/json"},
+        method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            dados = json.loads(resp.read().decode())
+        conteudo = dados["choices"][0]["message"].get("content") or ""
+        m = re.search(r"\{.*\}", conteudo, re.DOTALL)
+        if not m:
+            return None
+        res = json.loads(m.group(0))
+        comentarios = res.get("comentarios")
+        if not isinstance(comentarios, dict) or not res.get("resumo"):
+            return None
+        validos = {r["item"] for r in resultados}
+        comentarios = {k: str(v)[:500] for k, v in comentarios.items() if k in validos}
+        return {"resumo": str(res["resumo"])[:1200], "comentarios": comentarios,
+                "modelo": MODELO}
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, KeyError, ValueError):
+        return None

@@ -66,12 +66,23 @@ CSS = """
  details { margin-top: 22px; font-size: 13px; }
  .log { font-size: 11.5px; color: #6b7686; }
  @media(max-width:600px){.topo{padding:18px;flex-wrap:wrap;gap:14px}.topo img{width:240px;height:auto;max-width:100%}.topo .t{font-size:21px}.wrap{padding:0 12px;margin-top:18px}.card{padding:20px 16px}.item-head{flex-direction:column;align-items:flex-start;padding:14px}.badge{white-space:normal}.btn{display:block;margin:8px 0;text-align:center}.chip{display:inline-block;margin:4px 2px}.audit{table-layout:fixed}.audit td{overflow-wrap:anywhere}.audit td:first-child{width:95px}.ev{padding:6px 14px;overflow-wrap:anywhere}.obs{overflow-wrap:anywhere}.linha-decisao{padding:0 14px 8px}}
+ .ia-geral { background:#f4f0fb; border:1px solid #d9cdf0; border-radius:8px; padding:14px 20px; margin-top:16px; font-size:13.5px; color:#3d3252; line-height:1.55; }
+ .ia-geral b, .ia-com b { color:#6b4fa8; font-size:11px; letter-spacing:.6px; text-transform:uppercase; display:block; margin-bottom:4px; }
+ .ia-com { margin:4px 18px 8px; background:#f4f0fb; border-left:3px solid #6b4fa8; padding:8px 12px; font-size:13px; color:#3d3252; line-height:1.45; border-radius:0 4px 4px 0; }
+ .ia-com .sub2 { display:block; font-size:11px; color:#8a7fa8; margin-top:4px; }
  .rodape { text-align: center; color: #8a93a3; font-size: 11.5px; margin-top: 34px; }
 """
 
 
 def render(registro, slug=None):
     d = registro["documento"]
+    analise = registro.get("analise_ia") or {}
+    comentarios = analise.get("comentarios", {})
+    if analise.get("resumo"):
+        bloco_ia_geral = (f'<div class="ia-geral"><b>Análise geral da IA (NVIDIA NIM)</b>{_e(analise["resumo"])}'
+                          f'<span class="sub" style="display:block;margin-top:6px;font-size:11px">Texto auxiliar gerado por IA; não altera nenhum status nem a auditoria.</span></div>')
+    else:
+        bloco_ia_geral = ""
     resumo = {}
     for r in registro["resultados"]:
         resumo[r["status"]] = resumo.get(r["status"], 0) + 1
@@ -89,6 +100,10 @@ def render(registro, slug=None):
         evs = "".join(
             f'<div class="ev"><span class="loc">{_e(ev["local"])}{" (pág. " + str(ev["pagina"]) + ")" if ev.get("pagina") else ""}:</span> {_e(ev["trecho"][:240])}</div>'
             for ev in r["evidencias"])
+        com_ia = ""
+        if comentarios.get(r["item"]):
+            com_ia = (f'<div class="ia-com"><b>Análise da IA</b>{_e(comentarios[r["item"]])}'
+                      f'<span class="sub2">gerado por IA (NVIDIA NIM) &middot; auxiliar, não altera o status</span></div>')
         blocos.append(f'''
 <div class="item" style="border-left-color:{cor}">
   <div class="item-head">
@@ -98,6 +113,7 @@ def render(registro, slug=None):
   <div class="linha-decisao"><span class="pill" style="background:{cor_dec}">{_e(rotulo)}</span>
     <span class="sub" style="font-size:11.5px"> classe {_e(r["classe"])}</span></div>
   <div class="obs">{_e(r["observacao"])}</div>
+  {com_ia}
   {evs}
   <div class="foot"></div>
 </div>''')
@@ -137,6 +153,7 @@ def render(registro, slug=None):
  <tr><td>Reprodutível</td><td>{_e(repro_txt)}</td></tr>
 </table></details>
 <div class="chips">{chips}</div>
+{bloco_ia_geral}
 </div>
 {''.join(blocos)}
 <div class="transp"><b>Transparência deste MVP:</b> check-list transcrito de um print (só a aba Parecer Técnico; as outras abas não eram legíveis).

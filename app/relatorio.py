@@ -61,6 +61,14 @@ def gerar_relatorio(registro, caminho_pdf):
     story.append(Spacer(1, 8))
     chips = "   ".join(f"{k}: {v}" for k, v in resumo.items())
     story.append(Paragraph(f"Resumo: {chips}", cel_b))
+    analise = registro.get("analise_ia") or {}
+    comentarios = analise.get("comentarios", {})
+    if analise.get("resumo"):
+        ia_st = ParagraphStyle("iag", parent=cel, fontSize=8.5, textColor=colors.HexColor("#3d3252"),
+                               backColor=colors.HexColor("#f4f0fb"), borderColor=colors.HexColor("#6b4fa8"),
+                               borderWidth=0.6, borderPadding=5, spaceBefore=4, spaceAfter=4)
+        story.append(Paragraph("<b>ANÁLISE GERAL DA IA (NVIDIA NIM)</b> - texto auxiliar gerado por IA; não altera nenhum status nem a auditoria.", ia_st))
+        story.append(Paragraph(analise["resumo"], ia_st))
 
     secao_atual = None
     for r in registro["resultados"]:
@@ -82,6 +90,9 @@ def gerar_relatorio(registro, caminho_pdf):
         meta = f"Classe {r['classe']} | decisão: {r['decisao_por']}"
         story.append(Paragraph(meta, sub))
         story.append(Paragraph(r["observacao"], cel))
+        if comentarios.get(r["item"]):
+            ia_item = ParagraphStyle("iai", parent=cel, textColor=colors.HexColor("#3d3252"), leftIndent=8)
+            story.append(Paragraph("<font color='#6b4fa8'><b>Análise da IA</b> (auxiliar, não altera o status):</font> " + comentarios[r["item"]], ia_item))
         for ev in r["evidencias"]:
             local = ev["local"] + (f" (pág. {ev['pagina']})" if ev.get("pagina") else "")
             story.append(Paragraph(f"&nbsp;&nbsp;↳ <i>{local}:</i> {ev['trecho'][:220]}", sub))
@@ -93,7 +104,7 @@ def gerar_relatorio(registro, caminho_pdf):
         story.append(Paragraph(linha, sub))
     story.append(Paragraph(
         "Limites: check-list transcrito de um print (só a aba Parecer Técnico); "
-        "classe B: itens textuais usam IA (NVIDIA NIM) quando disponível; atualização de logos exige conferência visual. Classe C nunca é decidida pelo motor. "
+        "classe B: itens textuais usam IA (NVIDIA NIM) quando disponível; atualização de logos exige conferência visual. Classe C nunca é decidida pelo motor. O bloco Análise da IA é texto auxiliar gerado por IA (NVIDIA NIM): não participa das decisões de status nem da comparação de reprodutibilidade. "
         "Documentos de outras organizações não seguem o padrão de numeração/carimbo da AP - "
         "achados desse tipo indicam diferença de padrão, não necessariamente erro no documento.", sub))
     doc.build(story)
