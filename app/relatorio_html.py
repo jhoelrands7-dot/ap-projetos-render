@@ -106,7 +106,7 @@ def render(registro, slug=None):
         cor = CORES.get(r["status"], "#333")
         rotulo, cor_dec = _decisao(r.get("decisao_por", ""))
         evs = "".join(
-            f'<div class="ev"><span class="loc">{_e(ev["local"])}{" (pág. " + str(ev["pagina"]) + ")" if ev.get("pagina") else ""}:</span> {_e(ev["trecho"][:240])}</div>'
+            f'<div class="ev"><span class="loc">{_e(ev["local"])}:</span> {_e(ev["trecho"][:240])}</div>'
             for ev in r["evidencias"])
         com_ia = ""
         if comentarios.get(r["item"]):

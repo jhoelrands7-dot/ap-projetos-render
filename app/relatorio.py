@@ -103,7 +103,7 @@ def gerar_relatorio(registro, caminho_pdf):
             ia_item = ParagraphStyle("iai", parent=cel, textColor=colors.HexColor("#3d3252"), leftIndent=8)
             story.append(Paragraph("<font color='#6b4fa8'><b>Análise da IA</b> (auxiliar, não altera o status):</font> " + comentarios[r["item"]], ia_item))
         for ev in r["evidencias"]:
-            local = ev["local"] + (f" (pág. {ev['pagina']})" if ev.get("pagina") else "")
+            local = ev["local"]
             story.append(Paragraph(f"&nbsp;&nbsp;↳ <i>{local}:</i> {ev['trecho'][:220]}", sub))
         story.append(Spacer(1, 5))
 

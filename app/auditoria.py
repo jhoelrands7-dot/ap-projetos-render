@@ -25,6 +25,9 @@ def executar_verificacao(caminho, origem=None):
     log.append(f"sha256 do documento: {sha}")
     doc = extratores.extrair(caminho)
     log.append(f"extração: formato={doc.formato}, páginas/abas={doc.num_paginas}")
+    if "Relatório de Verificação - Módulo 1" in doc.texto_completo[:3000]:
+        log.append("REJEITADO: o arquivo é um relatório emitido por este sistema (reentrada bloqueada)")
+        raise ValueError("Este arquivo é um relatório gerado por este sistema, não um documento a verificar. Envie o documento original (PDF/DOCX/XLSX do projeto).")
     t0 = datetime.now(timezone.utc)
     ia.reset_contadores()
     resultados = motor.verificar(doc)
@@ -33,6 +36,8 @@ def executar_verificacao(caminho, origem=None):
     analise_ia = ia.comentar(resultados) if ia.disponivel() else None
     log.append("análise auxiliar de IA (resumo + comentários): " + ("gerada" if analise_ia else "indisponível"))
     ia_status = ia.status()
+    if ia.ULTIMAS_BRUTAS:
+        ia_status["respostas_brutas"] = list(ia.ULTIMAS_BRUTAS)
     if ia_status["falhas"]:
         log.append(f"ATENÇÃO: IA ({ia_status['modelo']}) falhou {ia_status['falhas']}x nesta execução ({ia_status['ultimo_erro']}); itens de classe B avaliados por heurística simulada")
     fim = datetime.now(timezone.utc)
@@ -80,6 +85,7 @@ def _sem_relógio(registro):
     copia["execucao"]["fim_utc"] = ""
     copia["log"] = [l for l in copia["log"] if "início" not in l and "fim" not in l and "avaliados em" not in l]
     copia.pop("analise_ia", None)  # texto auxiliar gerado por IA: não é decisão e varia entre execuções
+    copia.get("ia", {}).pop("respostas_brutas", None)  # texto bruto da IA: auditoria, não decisão
     return copia
 
 

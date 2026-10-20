@@ -19,6 +19,7 @@ ROTULO_IA = f"IA via NVIDIA NIM ({MODELO})"
 ULTIMO_ERRO = None
 FALHAS = 0
 CHAMADAS = 0
+ULTIMAS_BRUTAS = []  # respostas brutas da IA nesta execução (auditoria)
 
 
 def _registrar_falha(msg):
@@ -33,10 +34,11 @@ def _registrar_sucesso():
 
 
 def reset_contadores():
-    global ULTIMO_ERRO, FALHAS, CHAMADAS
+    global ULTIMO_ERRO, FALHAS, CHAMADAS, ULTIMAS_BRUTAS
     ULTIMO_ERRO = None
     FALHAS = 0
     CHAMADAS = 0
+    ULTIMAS_BRUTAS = []
 
 
 def status():
@@ -101,6 +103,7 @@ def avaliar_classe_b(item, descricao, trecho, timeout=30):
         "model": MODELO,
         "messages": [{"role": "user", "content": PROMPT.format(item=item, descricao=descricao, trecho=trecho[:20000])}],
         "temperature": 0,
+        "seed": 42,
         "max_tokens": 1500,
     }
     req = urllib.request.Request(
@@ -118,6 +121,7 @@ def avaliar_classe_b(item, descricao, trecho, timeout=30):
         res = json.loads(m.group(0))
         if res.get("status") not in _STATUS_VALIDOS:
             return None
+        ULTIMAS_BRUTAS.append({"item": item, "resposta": conteudo[:2000]})
         _registrar_sucesso()
         return {"status": res["status"],
                 "observacao": res.get("justificativa", "")[:400],
@@ -140,6 +144,9 @@ Responda SOMENTE com um JSON válido, sem texto fora do JSON, neste formato:
  "comentarios": {{"<ITEM>": "1 a 2 frases de análise prática do item"}}}}
 
 Regras: nunca contradiga o status decidido; não invente fatos fora das evidências mostradas; seja direto; use os códigos de ITEM exatamente como recebidos.
+Comente SOMENTE itens com status NÃO CONFORME ou EVIDÊNCIA INSUFICIENTE e classe A ou B; NÃO comente itens CONFORME, NÃO SE APLICA nem classe C (julgamento humano).
+Não use os termos "crítica", "crítico" ou "grave". Documentos de outras organizações não seguem o padrão AP de numeração/carimbo: descreva esses achados como "diferença de padrão", não como erro do documento.
+Baseie cada comentário APENAS na observacao e na evidencia fornecidas; não contradiga números ou fatos nelas (ex.: se a observação diz que há imagens, não diga que não há).
 
 RESULTADOS DO CHECK-LIST:
 {itens_json}"""
@@ -160,6 +167,7 @@ def comentar(resultados, timeout=60):
         "messages": [{"role": "user", "content": PROMPT_COMENTARIO.format(
             itens_json=json.dumps(itens, ensure_ascii=False))}],
         "temperature": 0,
+        "seed": 42,
         "max_tokens": 4000,
     }
     req = urllib.request.Request(
@@ -178,8 +186,10 @@ def comentar(resultados, timeout=60):
         comentarios = res.get("comentarios")
         if not isinstance(comentarios, dict) or not res.get("resumo"):
             return None
-        validos = {r["item"] for r in resultados}
+        validos = {r["item"] for r in resultados
+                   if r["status"] in ("NÃO CONFORME", "EVIDÊNCIA INSUFICIENTE") and r.get("classe") != "C"}
         comentarios = {k: str(v)[:500] for k, v in comentarios.items() if k in validos}
+        ULTIMAS_BRUTAS.append({"item": "_analise_geral", "resposta": conteudo[:3000]})
         _registrar_sucesso()
         return {"resumo": str(res["resumo"])[:1200], "comentarios": comentarios,
                 "modelo": MODELO}

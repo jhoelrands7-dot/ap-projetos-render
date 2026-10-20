@@ -339,7 +339,12 @@ def verificar():
     slug = (slug or "documento") + "-" + str(int(time.time()))[-5:]
     caminho = os.path.join(UPLOADS, slug + ext)
     arq.save(caminho)
-    registro, _ = auditoria.verificar_reprodutibilidade(caminho, origem="upload via interface web")
+    try:
+        registro, _ = auditoria.verificar_reprodutibilidade(caminho, origem="upload via interface web")
+    except ValueError as e:
+        if request.args.get("modo") == "json":
+            return {"erro": str(e)}, 400
+        return str(e), 400
     registro["documento"]["nome"] = arq.filename
     with open(os.path.join(SAIDA, f"{slug}.json"), "w") as f:
         json.dump(registro, f, ensure_ascii=False, indent=2)
