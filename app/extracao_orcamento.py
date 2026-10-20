@@ -230,9 +230,16 @@ def _revisar(fid, campo, res, paginas_norm):
     nv0 = _norm(valor)
     if nv0 in neg or any(nv0.startswith(n) and len(nv0) < len(n) + 40 for n in neg if n):
         return ST_NAO, "", "", None, "", obs
-    # eco: valor repete o nome do campo ou a definicao
+    # eco: valor repete o nome do campo ou a definicao (inclui prefixo/valor contido:
+    # pega o caso de a IA copiar o TITULO de uma lista de dados do documento,
+    # ex.: campo "Potência nominal do motor" -> valor "potencia nominal")
     nv, nc, nd = _norm(valor), _norm(campo["campo"]), _norm(campo["definicao"])
-    if (nc and nc in nv) or (nd and len(nd) > 15 and nd in nv):
+    eco_contido = nv and nc and (nv in nc or nc in nv)
+    pal_v = [w for w in re.findall(r"[a-z]{4,}", nv) if w not in _STOP]
+    pal_c = set(re.findall(r"[a-z]{4,}", nc + " " + nd))
+    sobrepos = (sum(1 for w in pal_v if w in pal_c) / len(pal_v)) if pal_v else 0
+    eco_lista = pal_v and len(pal_v) <= 4 and not re.search(r"\d", nv) and sobrepos >= 0.66
+    if (nc and nc in nv) or (nd and len(nd) > 15 and nd in nv) or eco_contido or eco_lista:
         return ST_AMBIGUO, valor, unidade, None, "", (obs + " | " if obs else "") + \
             "Revisão automática: valor repete o nome/definição do campo (possível eco da IA) — conferir no documento"
     # evidencia precisa existir literalmente em alguma pagina
