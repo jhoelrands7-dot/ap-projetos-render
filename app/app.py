@@ -194,7 +194,7 @@ def home():
  <h2>Verificar um documento</h2>
  <form method="post" action="/verificar" enctype="multipart/form-data">
   <div class="drop">
-   <input type="file" name="arquivo" accept=".pdf,.docx,.xlsx" required>
+   <input type="file" name="arquivo" accept=".pdf,.docx,.xlsx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/msword,application/vnd.ms-excel" required>
    <p style="color:#667;font-size:12.5px;margin:12px 0">PDF, DOCX ou XLSX. O documento é processado localmente.</p>
    <button class="btn" type="submit">Verificar documento</button>
   </div>
@@ -204,7 +204,8 @@ def home():
 <div class="card" style="margin-top:18px">
  <h2>Verificar vários documentos (até 5)</h2>
  <div class="drop">
-  <input type="file" id="fila-input" multiple accept=".pdf,.docx,.xlsx">
+  <input type="file" id="fila-input" multiple accept=".pdf,.docx,.xlsx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/msword,application/vnd.ms-excel">
+  <div id="fila-selecao" style="font-size:13px;color:#445;margin-top:6px">Nenhum arquivo selecionado.</div>
   <p style="color:#667;font-size:12.5px;margin:12px 0">Selecione até 5 arquivos (PDF, DOCX ou XLSX). Eles são enviados <b>um por vez</b>, nesta ordem, e cada relatório é liberado assim que fica pronto. Cada documento leva cerca de 1 a 2 minutos.</p>
   <button class="btn" id="fila-btn" type="button">Verificar em fila</button>
  </div>
@@ -214,7 +215,16 @@ def home():
 <script>
 (function(){{
  var inp=document.getElementById("fila-input"),btn=document.getElementById("fila-btn"),
-     prog=document.getElementById("fila-progresso"),lista=document.getElementById("fila-lista");
+     prog=document.getElementById("fila-progresso"),lista=document.getElementById("fila-lista"),
+     sel=document.getElementById("fila-selecao");
+ function mostraSel(){{
+  var fs=inp.files||[];
+  if(!fs.length){{sel.textContent="Nenhum arquivo selecionado.";return;}}
+  var nomes=[];
+  for(var k=0;k<fs.length;k++){{nomes.push((k+1)+". "+fs[k].name+" ("+(fs[k].size/1048576).toFixed(1)+" MB)");}}
+  sel.innerHTML="<b>"+fs.length+" arquivo(s) selecionado(s)"+(fs.length>5?" - só os 5 primeiros entram na fila":"")+":</b><br>"+nomes.join("<br>");
+ }}
+ inp.addEventListener("change",mostraSel);mostraSel();
  btn.addEventListener("click",function(){{
   var arqs=Array.prototype.slice.call(inp.files||[]).slice(0,5);
   if(!arqs.length){{prog.textContent="Selecione de 1 a 5 arquivos primeiro.";return;}}
@@ -226,16 +236,28 @@ def home():
   var i=0;
   function passo(){{
    if(i>=arqs.length){{prog.innerHTML="<b>Fila concluída.</b> Os relatórios ficam no histórico abaixo enquanto o serviço estiver acordado.";btn.disabled=false;return;}}
-   var a=arqs[i],li=itens[i],n=i+1;
-   prog.textContent="Processando "+n+" de "+arqs.length+": "+a.name+" (pode levar 1 a 2 minutos)...";
-   li.innerHTML="<b>"+n+". "+a.name+"</b> - processando...";
-   var fd=new FormData();fd.append("arquivo",a,a.name);
-   fetch("/verificar?modo=json",{{method:"POST",body:fd}}).then(function(r){{
-    if(!r.ok)throw new Error("HTTP "+r.status);return r.json();}}).then(function(d){{
-    li.innerHTML="<b>"+n+". "+a.name+"</b> - pronto: <a href='"+d.url+"'>abrir relatório</a>";
-    i++;passo();}}).catch(function(e){{
-    li.innerHTML="<b>"+n+". "+a.name+"</b> - <span style='color:#a22b28'>falhou ("+e.message+"). Tente este arquivo de novo.</span>";
-    i++;passo();}});
+   var a=arqs[i],li=itens[i],n=i+1,ini=Date.now(),tent=0;
+   function rot(){{
+    var s=Math.floor((Date.now()-ini)/1000),m=Math.floor(s/60),ss=("0"+(s%60)).slice(-2);
+    prog.textContent="Processando "+n+" de "+arqs.length+": "+a.name+" (há "+m+":"+ss+(n===1?"; o primeiro pode demorar mais se o serviço estiver em repouso":"")+")...";
+    li.innerHTML="<b>"+n+". "+a.name+"</b> - processando há "+m+":"+ss+"..."+(tent?" (nova tentativa)":"");
+   }}
+   rot();var tick=setInterval(rot,1000);
+   function enviar(){{
+    var ctl=new AbortController(),to=setTimeout(function(){{ctl.abort();}},300000);
+    var fd=new FormData();fd.append("arquivo",a,a.name);
+    fetch("/verificar?modo=json",{{method:"POST",body:fd,signal:ctl.signal}}).then(function(r){{
+     if(!r.ok)throw new Error("HTTP "+r.status);return r.json();}}).then(function(d){{
+     clearTimeout(to);clearInterval(tick);
+     li.innerHTML="<b>"+n+". "+a.name+"</b> - pronto: <a href='"+d.url+"'>abrir relatório</a>";
+     i++;passo();}}).catch(function(e){{
+     clearTimeout(to);
+     if(tent<1){{tent=1;return enviar();}}
+     clearInterval(tick);
+     li.innerHTML="<b>"+n+". "+a.name+"</b> - <span style='color:#a22b28'>falhou ("+(e.name==="AbortError"?"tempo esgotado":e.message)+"). Tente este arquivo de novo.</span>";
+     i++;passo();}});
+   }}
+   enviar();
   }}
   passo();
  }});
