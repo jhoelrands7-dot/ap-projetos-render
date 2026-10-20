@@ -56,6 +56,9 @@ MARCA_COR3 = _cor(os.environ.get("MARCA_COR3"), "#131a27")
 MARCA_GRAD = f"linear-gradient(135deg,{MARCA_COR1} 0%,{MARCA_COR2} 60%,{MARCA_COR3} 100%)"
 MARCA_GRAD_LOGIN = f"linear-gradient(135deg,{MARCA_COR1},{MARCA_COR3})"
 CLIENTE_NOTA = os.environ.get("CLIENTE_NOTA", "")  # nota extra na tela de login (ex.: disclaimer de demonstracao)
+ORC_SUB = os.environ.get("ORC_SUB", "Módulo experimental &middot; ambiente de teste (staging) &middot; não é o app da apresentação")  # subtitulo do header da pagina /orcamento
+ORC_AVISO_TITULO = os.environ.get("ORC_AVISO_TITULO", "Ambiente de teste (staging).")  # parte em negrito do aviso no topo da /orcamento
+ORC_RODAPE_TAG = os.environ.get("ORC_RODAPE_TAG", "staging")  # etiqueta no rodape da /orcamento
 
 def _marca_topo():
     if CLIENTE_LOGO:
@@ -482,9 +485,9 @@ PAG_ORCAMENTO = """<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"
 <body>
 <header class="topo">__MARCA__
 <div><div class="t">Extração de checklist de orçamento</div>
-<div class="s">Módulo experimental &middot; ambiente de teste (staging) &middot; não é o app da apresentação</div></div></header>
+<div class="s">__ORC_SUB__</div></div></header>
 <div class="wrap">
-<div class="warn" style="margin-bottom:14px"><b>Ambiente de teste (staging).</b> A primeira abertura pode levar cerca de 1 minuto e, após 15 minutos sem acesso, o servidor reinicia: extração em andamento e resultados ainda não baixados se perdem — baixe a planilha ao final de cada extração. O que você já baixou não se perde. <b>Os resultados são reais:</b> cada extração roda de verdade sobre os arquivos enviados.</div>
+<div class="warn" style="margin-bottom:14px"><b>__ORC_AVISO_TITULO__</b> A primeira abertura pode levar cerca de 1 minuto e, após 15 minutos sem acesso, o servidor reinicia: extração em andamento e resultados ainda não baixados se perdem — baixe a planilha ao final de cada extração. O que você já baixou não se perde. <b>Os resultados são reais:</b> cada extração roda de verdade sobre os arquivos enviados.</div>
 <div class="card">
  <h2>1. Envie o documento e o checklist</h2>
  <form id="f">
@@ -501,7 +504,7 @@ PAG_ORCAMENTO = """<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"
 <div class="warn"><b>O que este módulo faz:</b> a IA propõe valor, unidade, página e evidência para cada campo do checklist; uma revisão automática confere se a evidência existe de verdade no texto (o que não confirma vira "A confirmar" ou "Não encontrado").<br>
 <b>Limites:</b> sem OCR; deslocamento entre campos parecidos (ex.: material do corpo vs. do impulsor) ainda exige conferência humana; a IA pode oscilar entre execuções. A planilha sai no mesmo layout do checklist enviado, com uma aba "Auditoria" ao final (hash dos arquivos, modelo, data).<br>
 <b>Privacidade:</b> trechos do documento são enviados a provedor externo de IA (OpenRouter/NVIDIA) durante a extração. Teste uma extração por vez — este ambiente processa uma requisição por vez.</div>
-<div class="rodape">extracao-orcamento v0.3.1 &middot; staging &middot; <a href="/">voltar ao verificador (Módulo 1)</a></div>
+<div class="rodape">extracao-orcamento v0.3.1 &middot; __ORC_RODAPE_TAG__ &middot; <a href="/">voltar ao verificador (Módulo 1)</a></div>
 </div>
 <script>
 var f=document.getElementById("f"),prog=document.getElementById("prog"),ptxt=document.getElementById("prog-txt"),
@@ -532,7 +535,8 @@ f.addEventListener("submit",function(ev){
 
 @app.route("/orcamento")
 def orcamento():
-    return (PAG_ORCAMENTO.replace("__CSS__", _css_marca()).replace("__MARCA__", _marca_topo()).replace("__CLIENTE__", CLIENTE_NOME))
+    return (PAG_ORCAMENTO.replace("__CSS__", _css_marca()).replace("__MARCA__", _marca_topo()).replace("__CLIENTE__", CLIENTE_NOME)
+            .replace("__ORC_SUB__", ORC_SUB).replace("__ORC_AVISO_TITULO__", ORC_AVISO_TITULO).replace("__ORC_RODAPE_TAG__", ORC_RODAPE_TAG))
 
 
 @app.route("/orcamento/novo", methods=["POST"])
