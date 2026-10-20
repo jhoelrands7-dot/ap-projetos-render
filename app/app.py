@@ -184,7 +184,7 @@ def home():
                if os.environ.get("NVIDIA_API_KEY")
                else "desligada (heurística simulada nos itens de classe B)")
     return f"""<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1"><title>AP - Verificação de Documentos de Engenharia</title><style>{CSS}</style><style>.spin{{display:inline-block;width:16px;height:16px;border:3px solid #c9d4e4;border-top-color:#1f6fb2;border-radius:50%;animation:giro .8s linear infinite;vertical-align:-3px;margin-right:8px}}@keyframes giro{{to{{transform:rotate(360deg)}}}}.carregando{{display:none;margin-top:12px;font-size:14px;color:#2b3550;font-weight:600}}</style></head>
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>AP - Verificação de Documentos de Engenharia</title><style>{CSS}</style><style>.spin{{display:inline-block;width:16px;height:16px;border:3px solid #c9d4e4;border-top-color:#1f6fb2;border-radius:50%;animation:giro .8s linear infinite;vertical-align:-3px;margin-right:8px}}@keyframes giro{{to{{transform:rotate(360deg)}}}}.carregando{{display:none;margin-top:12px;font-size:14px;color:#2b3550;font-weight:600}}.barra{{margin-top:10px;height:8px;background:#e3e9f2;border-radius:4px;overflow:hidden}}.barra>div{{height:100%;width:30%;background:#1f6fb2;border-radius:4px;animation:carrega 1.4s ease-in-out infinite}}@keyframes carrega{{0%{{margin-left:-30%}}100%{{margin-left:100%}}}}</style></head>
 <body>
 <header class="topo">
   <img src="/static/logo_ap.png" alt="AP Consultoria e Projetos">
@@ -199,7 +199,7 @@ def home():
    <input type="file" name="arquivo" accept=".pdf,.docx,.xlsx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/msword,application/vnd.ms-excel" required>
    <p style="color:#667;font-size:12.5px;margin:12px 0">PDF, DOCX ou XLSX. O documento é processado localmente.</p>
    <button class="btn" type="submit">Verificar documento</button>
-   <div class="carregando" id="um-loading" role="status"><span class="spin"></span>Analisando o documento... leva de 1 a 2 minutos. Não feche esta página.</div>
+   <div class="carregando" id="um-loading" role="status"><span class="spin"></span>Analisando o documento... leva de 1 a 2 minutos. Não feche esta página.<div class="barra"><div></div></div></div>
   </div>
  </form>
  <p class="modo">IA nesta instância: <b>{modo_ia}</b> &middot; cada item do relatório mostra quem decidiu: regra determinística, IA (NVIDIA NIM), heurística simulada ou humano.</p>
@@ -216,14 +216,14 @@ def home():
  </div>
  <div id="fila-erro" role="alert" style="display:none;background:#fff0ef;color:#a22b28;padding:10px;border-radius:5px;margin-top:10px;font-size:13.5px"></div>
  <div id="fila-progresso" style="font-size:13.5px;margin-top:10px"></div>
- <div class="carregando" id="fila-loading" role="status" style="margin-top:8px"><span class="spin"></span><span id="fila-loading-txt">Analisando...</span></div>
+ <div class="carregando" id="fila-loading" role="status" style="margin-top:8px"><span class="spin"></span><span id="fila-loading-txt">Analisando...</span><div class="barra"><div></div></div></div>
  <ul id="fila-lista" style="list-style:none;padding:0;margin:10px 0 0;font-size:13.5px"></ul>
  <details style="margin-top:14px"><summary style="cursor:pointer;font-size:13px;color:#445">A fila não reagiu neste aparelho? Use o envio alternativo</summary>
   <form method="post" action="/verificar-lote" enctype="multipart/form-data" style="margin-top:8px" onsubmit="document.getElementById('lote-loading').style.display='block';this.querySelector('button').disabled=true;">
    <input type="file" name="arquivos" multiple accept=".pdf,.docx,.xlsx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/msword,application/vnd.ms-excel" required>
    <p style="color:#667;font-size:12px;margin:8px 0">Envio direto de até 3 arquivos de uma vez, sem a fila. Esta página pode ficar carregando por alguns minutos; os links aparecem ao final.</p>
    <button class="btn" type="submit">Enviar em lote</button>
-   <div class="carregando" id="lote-loading" role="status"><span class="spin"></span>Enviando e analisando em lote... pode levar alguns minutos. Não feche esta página.</div>
+   <div class="carregando" id="lote-loading" role="status"><span class="spin"></span>Enviando e analisando em lote... pode levar alguns minutos. Não feche esta página.<div class="barra"><div></div></div></div>
   </form>
  </details>
  <div style="font-size:11px;color:#9aa4b2;margin-top:10px">versão da página: fila-2026-10-20a</div>
