@@ -85,7 +85,7 @@ LOGIN = """<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
 
 @app.before_request
 def _auth_demo():
-    public = request.endpoint == "login" or request.path == "/static/logo_ap.png"
+    public = request.endpoint == "login" or request.path in ("/static/logo_ap.png", CLIENTE_LOGO)
     if not public and not session.get("authenticated"):
         return redirect("/login")
 
