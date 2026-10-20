@@ -53,7 +53,7 @@ LOGIN = """<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
 <label for="password">Senha</label><input id="password" name="password" type="password" autocomplete="current-password" required>
 <label class="show"><input type="checkbox" onclick="document.getElementById('password').type=this.checked?'text':'password'">Mostrar senha</label>
 <button type="submit">Entrar na plataforma</button></form></section>
-<p class="note">MVP • Módulo 1 • Parecer Técnico<br>Acesso restrito. Endereço temporário para testes.<br>Com IA ligada, trechos são enviados à NVIDIA.</p></main></body></html>"""
+<p class="note">MVP • Módulo 1 • Parecer Técnico<br>Acesso restrito. Endereço temporário para testes.<br>Trechos dos documentos são enviados a provedor externo de IA (OpenRouter/NVIDIA).<br><br><b>Ambiente de teste:</b> a 1ª abertura pode levar cerca de 1 minuto (o servidor dorme após 15 min sem acesso). Os resultados das extrações são reais.</p></main></body></html>"""
 
 @app.before_request
 def _auth_demo():
@@ -459,6 +459,7 @@ PAG_ORCAMENTO = """<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"
 <div><div class="t">Extração de checklist de orçamento</div>
 <div class="s">Módulo experimental &middot; ambiente de teste (staging) &middot; não é o app da apresentação</div></div></header>
 <div class="wrap">
+<div class="warn" style="margin-bottom:14px"><b>Ambiente de teste (staging).</b> A primeira abertura pode levar cerca de 1 minuto e, após 15 minutos sem acesso, o servidor reinicia: extração em andamento e resultados ainda não baixados se perdem — baixe a planilha ao final de cada extração. O que você já baixou não se perde. <b>Os resultados são reais:</b> cada extração roda de verdade sobre os arquivos enviados.</div>
 <div class="card">
  <h2>1. Envie o documento e o checklist</h2>
  <form id="f">
@@ -472,10 +473,10 @@ PAG_ORCAMENTO = """<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"
  <div id="erro" role="alert" style="display:none;background:#fff0ef;color:#a22b28;padding:10px;border-radius:5px;margin-top:12px;font-size:13.5px"></div>
  <div id="pronto" style="display:none;margin-top:16px"></div>
 </div>
-<div class="warn"><b>O que este módulo faz:</b> a IA propõe valor, unidade, página e evidência para cada campo do checklist; uma revisão automática confere se a evidência existe de verdade no texto (o que não confirma vira "Ambíguo" ou "Não encontrado").<br>
+<div class="warn"><b>O que este módulo faz:</b> a IA propõe valor, unidade, página e evidência para cada campo do checklist; uma revisão automática confere se a evidência existe de verdade no texto (o que não confirma vira "A confirmar" ou "Não encontrado").<br>
 <b>Limites:</b> sem OCR; deslocamento entre campos parecidos (ex.: material do corpo vs. do impulsor) ainda exige conferência humana; a IA pode oscilar entre execuções. A planilha sai no mesmo layout do checklist enviado, com uma aba "Auditoria" ao final (hash dos arquivos, modelo, data).<br>
-<b>Privacidade:</b> trechos do documento são enviados à NVIDIA (IA) durante a extração. Teste uma extração por vez — este ambiente processa uma requisição por vez.</div>
-<div class="rodape">extracao-orcamento v0.1 &middot; staging &middot; <a href="/">voltar ao verificador (Módulo 1)</a></div>
+<b>Privacidade:</b> trechos do documento são enviados a provedor externo de IA (OpenRouter/NVIDIA) durante a extração. Teste uma extração por vez — este ambiente processa uma requisição por vez.</div>
+<div class="rodape">extracao-orcamento v0.3.1 &middot; staging &middot; <a href="/">voltar ao verificador (Módulo 1)</a></div>
 </div>
 <script>
 var f=document.getElementById("f"),prog=document.getElementById("prog"),ptxt=document.getElementById("prog-txt"),

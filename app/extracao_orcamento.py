@@ -26,7 +26,7 @@ from datetime import datetime, timezone
 import auditoria, extratores, ia
 
 VERSAO = "extracao-orcamento v0.3.1 (2026-10-20; staging; checklist enxuto; R1/R2/R3; trava-tipo prioriza nome do campo; eco exige 3+ chars; sem OCR)"
-ST_EXTRAIDO, ST_NAO, ST_AMBIGUO, ST_NAOVERIF = "Extraído", "Não encontrado", "Ambíguo", "Não verificado"
+ST_EXTRAIDO, ST_NAO, ST_AMBIGUO, ST_NAOVERIF = "Extraído", "Não encontrado", "A confirmar", "Não verificado"
 
 COLS = {"valor": "Valor extraído", "unidade": "Unidade encontrada", "status": "Status da extração",
         "pagina": "Página", "evidencia": "Trecho de evidência", "obs": "Observações"}
