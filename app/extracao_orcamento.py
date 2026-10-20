@@ -25,7 +25,7 @@ from datetime import datetime, timezone
 
 import auditoria, extratores, ia
 
-VERSAO = "extracao-orcamento v0.2 (2026-10-20; staging; OpenRouter+NVIDIA; trava anti-deslocamento; sem OCR)"
+VERSAO = "extracao-orcamento v0.3 (2026-10-20; staging; checklist enxuto; R1 quantitativo, R2 anti-eco cruzado, R3 numero fora de contexto; sem OCR)"
 ST_EXTRAIDO, ST_NAO, ST_AMBIGUO, ST_NAOVERIF = "Extraído", "Não encontrado", "Ambíguo", "Não verificado"
 
 COLS = {"valor": "Valor extraído", "unidade": "Unidade encontrada", "status": "Status da extração",
@@ -54,6 +54,10 @@ def _palavras_chave(campos):
 
 
 def _selecionar_paginas(campos, paginas, cap=28000):
+    # doc pequeno (cabe no cap): usa todas as paginas — filtrar so faz a IA
+    # "nao achar" o que esta fora do recorte (regressao observada em 2026-10-20)
+    if sum(len(p.texto or "") for p in paginas) <= cap:
+        return list(paginas)
     kws = _palavras_chave(campos)
     sel = []
     for p in paginas:
@@ -121,9 +125,9 @@ def _extrair_categoria(cat, itens, paginas):
     Lotes de ate 8 campos por chamada: o NIM gratuito estoura timeout em
     prompts/saidas grandes; lotes menores concluem dentro do timeout."""
     out = {}
-    for i in range(0, len(itens), 8):
-        lote = itens[i:i + 8]
-        sel = _selecionar_paginas(lote, paginas, cap=12000)
+    for i in range(0, len(itens), 5):
+        lote = itens[i:i + 5]
+        sel = _selecionar_paginas(lote, paginas, cap=20000)
         trechos = "\n".join(f"[[PÁGINA {p.numero or 1}]]\n{p.texto}" for p in sel)
         lista = "\n".join(f'- {c["id"]}: campo "{c["campo"]}" — {(c["definicao"] or "")[:120]}'
                           + (f' (unidade típica: {c["unidade_ref"]})' if c["unidade_ref"] else "")
@@ -211,6 +215,55 @@ def _valor_na_vizinhanca(valor, evid, texto_pagina):
     return ok_num and ok_pal
 
 
+# Regras gerais pos-revisao (2026-10-20, pedido do usuario):
+# R1 quantitativo: campo que pede quantidade/potencia/peso exige valor
+#    numerico (unidade opcional). Rejeita deslocamento tipico de valor
+#    descritivo (ex.: Quantidade <- "menores a 10", que era a vazao).
+_RX_CAMPO_NUMERICO = re.compile(r"quantidade|pot[eê]ncia|peso\b", re.I)
+_RX_VALOR_NUMERICO = re.compile(r"^[~>=<+]*\s*\d")
+# R2 anti-eco cruzado: um valor identico ao TIPO DO EQUIPAMENTO so e
+#    legitimo em campo de identidade; em outro campo e eco (ex.: Tipo de
+#    instalacao <- "bomba centrifuga multietapa").
+_RX_CAMPO_IDENTIDADE = re.compile(
+    r"^(tipo( de| do)? equipamento|tipo|modelo.*|refer[eê]ncia.*|bomba|motor( el[eé]trico)?|equipamento)$", re.I)
+
+
+_RX_UNIDADE_MEDIDA = re.compile(
+    r"\d\s*(l/s|l/min|m3/h|m³/h|gpm|kw|cv|hp|bar|mca|psi|mpa|kpa|mmca|rpm|db|hz|°c|°f|kgf)\b", re.I)
+
+
+def _pos_revisao(decisoes, campos):
+    """Regras gerais aplicadas sobre o conjunto de decisoes (R1, R2)."""
+    ancora = None
+    for c in campos:
+        if _RX_CAMPO_IDENTIDADE.match(_norm(c["campo"])) and "tipo" in _norm(c["campo"]):
+            st, valor, un, pg, ev, ob = decisoes.get(c["id"], (None,) * 6)
+            if st == ST_EXTRAIDO and valor:
+                ancora = _norm(valor)
+                break
+    for c in campos:
+        chave = c["id"]
+        if chave not in decisoes:
+            continue
+        status, valor, unidade, pagina, evid, obs = decisoes[chave]
+        if status != ST_EXTRAIDO or not valor:
+            continue
+        nome = _norm(c["campo"])
+        if _RX_CAMPO_NUMERICO.search(nome) and not _RX_VALOR_NUMERICO.match(valor.strip()):
+            decisoes[chave] = (ST_NAO, "", "", None, "", (obs + " | " if obs else "") +
+                "Revisão automática (R1): campo quantitativo exige valor numérico; valor descartado por não ser numérico")
+            continue
+        if (ancora and len(ancora) >= 6 and _norm(valor) == ancora
+                and not _RX_CAMPO_IDENTIDADE.match(nome)):
+            decisoes[chave] = (ST_AMBIGUO, valor, unidade, pagina, evid, (obs + " | " if obs else "") +
+                "Revisão automática (R2): valor idêntico ao tipo do equipamento (possível eco cruzado da IA) — conferir no documento")
+        elif (not _tipo_de(c["campo"] or "", _TIPO_CAMPO)
+                and re.fullmatch(r"[~>=<+]*\s*\d+[.,]?\d*", valor.strip())
+                and _RX_UNIDADE_MEDIDA.search(evid or "")):
+            decisoes[chave] = (ST_AMBIGUO, valor, unidade, pagina, evid, (obs + " | " if obs else "") +
+                "Revisão automática (R3): número isolado em evidência de medição (unidade detectada) — provável deslocamento de outro campo, conferir no documento")
+
+
 def _revisar(fid, campo, res, paginas_norm):
     """Revisao anti-eco + anti-deslocamento deterministica. Devolve (status, valor, unidade, pagina, evidencia, obs)."""
     valor = str(res.get("valor") or "").strip()
@@ -241,7 +294,8 @@ def _revisar(fid, campo, res, paginas_norm):
     pal_c = set(re.findall(r"[a-z]{4,}", nc + " " + nd))
     sobrepos = (sum(1 for w in pal_v if w in pal_c) / len(pal_v)) if pal_v else 0
     eco_lista = pal_v and len(pal_v) <= 4 and not re.search(r"\d", nv) and sobrepos >= 0.66
-    if (nc and nc in nv) or (nd and len(nd) > 15 and nd in nv) or eco_contido or eco_lista:
+    identidade = bool(_RX_CAMPO_IDENTIDADE.match(_norm(campo["campo"])))
+    if not identidade and ((nc and nc in nv) or (nd and len(nd) > 15 and nd in nv) or eco_contido or eco_lista):
         return ST_AMBIGUO, valor, unidade, None, "", (obs + " | " if obs else "") + \
             "Revisão automática: valor repete o nome/definição do campo (possível eco da IA) — conferir no documento"
     # evidencia precisa existir literalmente em alguma pagina
@@ -298,7 +352,16 @@ def ler_checklist(caminho_xlsx):
         enxuto = True
     campos = []
     for r in range(4, ws.max_row + 1):
-        if ws.cell(r, 1).value:
+        if not ws.cell(r, 1).value:
+            continue
+        if enxuto:
+            # enxuto: col1 = nome do campo, col2 = definicao (id = nome)
+            nome = str(ws.cell(r, 1).value).strip()
+            campos.append({"linha": r, "id": nome, "categoria": "",
+                           "campo": nome,
+                           "definicao": str(ws.cell(r, 2).value or ""),
+                           "unidade_ref": ""})
+        else:
             campos.append({"linha": r, "id": str(ws.cell(r, 1).value).strip(),
                            "categoria": str(ws.cell(r, 2).value or "").strip(),
                            "campo": str(ws.cell(r, 3).value or "").strip(),
@@ -320,8 +383,16 @@ def executar(caminho_pdf, caminho_xlsx, caminho_saida):
 
     def trabalho(cat_itens):
         cat, itens = cat_itens
-        if re.search(r"revis[aã]o|pend[eê]ncia|gest[aã]o", _norm(cat)):
+        gest = re.compile(r"revis[aã]o|pend[eê]ncia|gest[aã]o")
+        if gest.search(_norm(cat)):
             return cat, {c["id"]: {"ia_ok": False, "gestao": True} for c in itens}
+        if not cat:  # enxuto: campo de gestao identificado pelo nome ou pela definicao
+            g = {c["id"]: {"ia_ok": False, "gestao": True} for c in itens
+                 if gest.search(_norm(c["campo"])) or gest.search(_norm(c["definicao"]))}
+            itens = [c for c in itens if c["id"] not in g]
+            cat_res = _extrair_categoria(cat, itens, doc.paginas) if itens else {}
+            cat_res.update(g)
+            return cat, cat_res
         return cat, _extrair_categoria(cat, itens, doc.paginas)
 
     resultados = {}
@@ -329,14 +400,19 @@ def executar(caminho_pdf, caminho_xlsx, caminho_saida):
         for cat, res in ex.map(trabalho, cats.items()):
             resultados.update(res)
 
-    stats = {ST_EXTRAIDO: 0, ST_NAO: 0, ST_AMBIGUO: 0, ST_NAOVERIF: 0}
+    decisoes = {}
     for c in campos:
         res = resultados.get(c["id"]) or {"ia_ok": False}
         if res.get("gestao"):
-            status, valor, unidade, pagina, evid, obs = ST_NAOVERIF, "", "", None, "", \
-                "Campo de gestão do checklist (revisão/aprovação), não consta do documento técnico"
+            decisoes[c["id"]] = (ST_NAOVERIF, "", "", None, "",
+                "Campo de gestão do checklist (revisão/aprovação), não consta do documento técnico")
         else:
-            status, valor, unidade, pagina, evid, obs = _revisar(c["id"], c, res, paginas_norm)
+            decisoes[c["id"]] = _revisar(c["id"], c, res, paginas_norm)
+    _pos_revisao(decisoes, campos)
+
+    stats = {ST_EXTRAIDO: 0, ST_NAO: 0, ST_AMBIGUO: 0, ST_NAOVERIF: 0}
+    for c in campos:
+        status, valor, unidade, pagina, evid, obs = decisoes[c["id"]]
         stats[status] += 1
         if enxuto:
             # layout enxuto: Resultado = valor (ou o status quando vazio);
