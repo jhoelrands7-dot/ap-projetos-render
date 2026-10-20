@@ -1,0 +1,246 @@
+# -*- coding: utf-8 -*-
+"""
+Interface web do MVP - Módulo 1 (verificação de documentos), AP Projetos/LuxVerso.
+
+Uso:  python3 app.py            (sobe em http://127.0.0.1:8000)
+Com IA real: definir NVIDIA_API_KEY no ambiente antes de subir.
+
+Fluxo: sobe um PDF/DOCX/XLSX -> motor verifica -> relatório com evidências
+-> baixa PDF e JSON de auditoria.
+"""
+import json, os, re, sys, time
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from flask import Flask, request, redirect, send_file, send_from_directory, abort
+
+import auditoria, relatorio, relatorio_html
+
+BASE = os.path.dirname(os.path.abspath(__file__))
+SAIDA = os.path.join(BASE, "saida")
+UPLOADS = os.path.join(BASE, "uploads")
+os.makedirs(SAIDA, exist_ok=True)
+os.makedirs(UPLOADS, exist_ok=True)
+
+app = Flask(__name__)
+
+# --- Login da demo, com sessao e senha definida no cofre ---
+from flask import session, render_template_string
+import secrets, hmac
+from datetime import timedelta
+app.secret_key = os.environ.get("DEMO_SESSION_KEY") or secrets.token_hex(32)
+app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SECURE=True,
+                  SESSION_COOKIE_SAMESITE="Lax", PERMANENT_SESSION_LIFETIME=timedelta(hours=8),
+                  MAX_CONTENT_LENGTH=25 * 1024 * 1024)
+DEMO_SENHA = os.environ.get("DEMO_SENHA", "")
+LOGIN = """<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Acesso | Demo AP Projetos</title>
+<style>*{box-sizing:border-box}body{margin:0;font-family:Calibri,Segoe UI,Arial,sans-serif;background:#f2f4f8;color:#243148}.top{padding:30px 24px;background:linear-gradient(135deg,#2b3550,#131a27)}.top img{width:255px;max-width:100%;height:auto}.brand{color:#b8c8df;font-size:15px;margin:16px 0 0}.wrap{padding:30px 20px;max-width:460px;margin:auto}.card{background:#fff;border-radius:12px;padding:28px;box-shadow:0 4px 20px #17213112}h1{font-size:26px;margin:0 0 12px}p{font-size:15px;line-height:1.5;color:#586579}label{display:block;font-size:15px;font-weight:600;margin:22px 0 8px}input{width:100%;padding:14px;border:1px solid #a8b6ca;border-radius:6px;font-size:16px}button{width:100%;margin:26px 0 10px;padding:15px;background:#1f6fb2;color:white;border:0;border-radius:6px;font-size:16px;font-weight:600}.note{font-size:13px;color:#6d7788;text-align:center;line-height:1.6}.error{background:#fff0ef;color:#a22b28;padding:12px;border-radius:5px}.show{font-size:14px;display:flex;gap:8px;align-items:center;font-weight:400}.show input{width:18px;height:18px}input:focus,button:focus{outline:3px solid #9ac8ed;outline-offset:2px}</style></head><body>
+<header class="top"><img src="/static/logo_ap.png" alt="AP Consultoria e Projetos"><p class="brand">Verificação de documentos de engenharia</p></header>
+<main class="wrap"><section class="card"><h1>Entrar na demonstração</h1><p>Use o usuário <b>ap</b> e a senha que você definiu no link seguro.</p>
+{% if error %}<p class="error" role="alert">{{error}}</p>{% endif %}
+<form method="post" action="/login"><input type="hidden" name="csrf" value="{{csrf}}"><label for="username">Usuário</label><input id="username" name="username" value="ap" autocomplete="username" required>
+<label for="password">Senha</label><input id="password" name="password" type="password" autocomplete="current-password" required>
+<label class="show"><input type="checkbox" onclick="document.getElementById('password').type=this.checked?'text':'password'">Mostrar senha</label>
+<button type="submit">Entrar na plataforma</button></form></section>
+<p class="note">MVP • Módulo 1 • Parecer Técnico<br>Acesso restrito. Endereço temporário para testes.<br>Com IA ligada, trechos são enviados à NVIDIA.</p></main></body></html>"""
+
+@app.before_request
+def _auth_demo():
+    public = request.endpoint == "login" or request.path == "/static/logo_ap.png"
+    if not public and not session.get("authenticated"):
+        return redirect("/login")
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if session.get("authenticated"):
+        return redirect("/")
+    if "csrf" not in session:
+        session["csrf"] = secrets.token_urlsafe(24)
+    error = None
+    if request.method == "POST":
+        valid_csrf = hmac.compare_digest(request.form.get("csrf", ""), session["csrf"])
+        valid_user = hmac.compare_digest(request.form.get("username", ""), "ap")
+        valid_pass = bool(DEMO_SENHA) and hmac.compare_digest(request.form.get("password", ""), DEMO_SENHA)
+        if valid_csrf and valid_user and valid_pass:
+            session.clear();session["authenticated"] = True;session.permanent = True
+            return redirect("/")
+        error = "Usuário ou senha incorretos. Confira os dados e tente novamente."
+    return render_template_string(LOGIN, error=error, csrf=session["csrf"])
+
+@app.route("/logout", methods=["POST"])
+def logout():
+    session.clear()
+    return redirect("/login")
+# --- fim autenticacao ---
+
+
+EXTENSOES = {".pdf", ".docx", ".xlsx"}
+
+CORES = {"CONFORME": "#2e7d32", "NÃO CONFORME": "#c62828",
+         "EVIDÊNCIA INSUFICIENTE": "#e6a817", "NÃO SE APLICA": "#757575"}
+
+CSS = """
+ * { box-sizing: border-box; }
+ body { font-family: Calibri, 'Segoe UI', Arial, sans-serif; margin: 0; background: #f2f4f8; color: #232323; }
+ .topo { background: linear-gradient(135deg, #2b3550 0%, #1b2333 60%, #131a27 100%);
+         display: flex; align-items: center; gap: 26px; padding: 20px 40px; }
+ .topo img { height: 62px; }
+ .topo .t { color: #fff; font-size: 24px; font-weight: 300; letter-spacing: .5px; }
+ .topo .s { color: #9db3d4; font-size: 13px; font-weight: 300; margin-top: 4px; letter-spacing: .3px; }
+ .wrap { max-width: 1020px; margin: 26px auto 60px; padding: 0 20px; }
+ .card { background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(20,30,50,.08);
+         padding: 24px 28px; margin-bottom: 20px; }
+ h2 { font-size: 14px; font-weight: 600; letter-spacing: 1.2px; color: #2b3550; margin: 0 0 14px;
+      text-transform: uppercase; }
+ .drop { border: 2px dashed #9db3cc; border-radius: 8px; padding: 30px; text-align: center;
+         background: #f7fafd; }
+ .btn { display: inline-block; background: #1f6fb2; color: #fff; padding: 10px 22px; border: none;
+        border-radius: 4px; font-size: 14.5px; cursor: pointer; text-decoration: none; font-family: inherit; }
+ table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+ th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid #e6eaf1; }
+ th { color: #5a6474; font-size: 12px; letter-spacing: .8px; text-transform: uppercase; }
+ td a { color: #1f6fb2; text-decoration: none; }
+ td a:hover { text-decoration: underline; }
+ .chip { color: #fff; padding: 3px 10px; border-radius: 12px; font-size: 11.5px; font-weight: 700; margin-right: 5px; }
+ .transp { background: #fdf6e3; border: 1px solid #e3d193; border-radius: 8px; padding: 14px 20px;
+           font-size: 12.5px; color: #5d5426; margin-top: 6px; line-height: 1.55; }
+ .rodape { text-align: center; color: #8a93a3; font-size: 11.5px; margin-top: 30px; }
+ .modo { font-size: 12px; color: #5a6474; margin-top: 10px; }
+ .modo b { color: #6b4fa8; }
+ @media(max-width:600px){.topo{padding:20px;flex-wrap:wrap;gap:15px}.topo img{max-width:100%;height:auto;width:240px}.topo .t{font-size:22px}.wrap{padding:0 12px}.card{padding:20px 16px}.drop{padding:22px 12px}th,td{padding:10px 4px;font-size:12px}.chip{display:inline-block;margin:3px 0}.transp{padding:14px}}
+"""
+
+
+NOMES = {
+    "memorial-descritivo": "Memorial Descritivo - Muro do Museu (Indiaporã 007/2026)",
+    "memoria-de-calculo": "Memória de Cálculo - Muro do Museu (Indiaporã 007/2026)",
+    "planilha-orcamentaria": "Planilha Orçamentária e Cronograma (Indiaporã 007/2026)",
+    "projeto-arquitetonico": "Projeto Arquitetônico (Indiaporã 007/2026)",
+    "rrt-projeto": "RRT do Projeto (Indiaporã 007/2026)",
+    "termo-de-referencia": "Termo de Referência da Obra (Indiaporã 007/2026)",
+    "etp": "Estudo Técnico Preliminar (Indiaporã 007/2026)",
+    "parecer-tecnico-seinfra-go": "Parecer Técnico - SEINFRA/GO (processo SEI)",
+    "cesan-manual-recebimento-obras": "Procedimento CESAN ENG.002 - Recebimento de Obras",
+    "modelo-proposta-docx": "Modelo de Proposta DOCX (Indiaporã 007/2026)",
+    "dec-tecnico-operacional-docx": "Declaração Técnico-Operacional DOCX (Indiaporã 007/2026)",
+}
+
+
+def _chips(resumo):
+    return " ".join(f'<span class="chip" style="background:{CORES.get(k, "#666")}">{k}: {v}</span>'
+                    for k, v in resumo.items())
+
+
+@app.route("/static/<path:nome>")
+def estatico(nome):
+    return send_from_directory(os.path.join(BASE, "static"), nome)
+
+
+@app.route("/")
+def home():
+    ultimo = session.get("ultimo_relatorio")
+    if ultimo and not request.args.get("novo") and not request.args.get("historico") and os.path.isfile(os.path.join(SAIDA, ultimo + ".json")):
+        return redirect("/relatorio/" + ultimo)
+    linhas = ""
+    indice_path = os.path.join(SAIDA, "indice.json")
+    docs = json.load(open(indice_path)) if os.path.exists(indice_path) else []
+    slugs_indice = {d["slug"] for d in docs}
+    for d in docs:
+        try:
+            reg = json.load(open(os.path.join(SAIDA, d["slug"] + ".json")))
+            usa_ia = any("IA via NVIDIA" in r.get("decisao_por", "") for r in reg["resultados"])
+        except Exception:
+            usa_ia = False
+        tag = ' <span style="color:#6b4fa8;font-size:11px;font-weight:700">IA</span>' if usa_ia else ""
+        nome = NOMES.get(d["slug"], d["arquivo"][:62])
+        linhas += (f'<tr><td><a href="/relatorio/{d["slug"]}">{nome}</a>{tag}</td>'
+                   f'<td>{_chips(d["resumo"])}</td></tr>')
+    outros = sorted(f[:-5] for f in os.listdir(SAIDA)
+                    if f.endswith(".json") and f != "indice.json" and f[:-5] not in slugs_indice)
+    for slug in outros:
+        try:
+            reg = json.load(open(os.path.join(SAIDA, f"{slug}.json")))
+            resumo = auditoria.resumo_status(reg["resultados"])
+            usa_ia = any("IA via NVIDIA" in r.get("decisao_por", "") for r in reg["resultados"])
+            tag = ' <span style="color:#6b4fa8;font-size:11px;font-weight:700">IA</span>' if usa_ia else ""
+            linhas += (f'<tr><td><a href="/relatorio/{slug}">{reg["documento"]["nome"][:62]}</a>{tag} '
+                       f'<span style="color:#98a1ae;font-size:11px">(upload)</span></td>'
+                       f'<td>{_chips(resumo)}</td></tr>')
+        except Exception:
+            pass
+    modo_ia = "ligada" if os.environ.get("NVIDIA_API_KEY") else "desligada (heurística simulada nos itens de classe B)"
+    return f"""<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>AP - Verificação de Documentos de Engenharia</title><style>{CSS}</style></head>
+<body>
+<header class="topo">
+  <img src="/static/logo_ap.png" alt="AP Consultoria e Projetos">
+  <div><div class="t">Verificação de Documentos de Engenharia</div>
+  <div class="s">Módulo 1 &middot; Check-list FRM-SEMEC-001 - Parecer Técnico &middot; MVP</div></div>
+</header>
+<div class="wrap">
+<div class="card">
+ <h2>Verificar um documento</h2>
+ <form method="post" action="/verificar" enctype="multipart/form-data">
+  <div class="drop">
+   <input type="file" name="arquivo" accept=".pdf,.docx,.xlsx" required>
+   <p style="color:#667;font-size:12.5px;margin:12px 0">PDF, DOCX ou XLSX. O documento é processado localmente.</p>
+   <button class="btn" type="submit">Verificar documento</button>
+  </div>
+ </form>
+ <p class="modo">IA nesta instância: <b>{modo_ia}</b> &middot; cada item do relatório mostra quem decidiu: regra determinística, IA (NVIDIA NIM), heurística simulada ou humano.</p>
+</div>
+<details class="card" id="historico"><summary style="cursor:pointer;font-weight:600">Histórico de documentos (secundário)</summary>
+ <table><tr><th>Documento</th><th>Resultado</th></tr>{linhas}</table>
+</details>
+<div class="transp"><b>Transparência deste MVP:</b> check-list transcrito de um print (só a aba Parecer Técnico; as demais abas não eram legíveis).
+Itens marcados "Heurística (simulada)" ainda não usam IA; itens "IA (NVIDIA NIM)" foram decididos por modelo de linguagem real; itens "Humano" não são decididos pelo motor.
+Documentos de outras organizações não seguem o padrão AP de numeração/carimbo: nesses itens, o achado indica diferença de padrão, não necessariamente erro no documento.</div>
+<div class="rodape">MVP - Módulo 1 (verificação de documentos) &middot; LuxVerso &middot; extração local; trechos enviados à NVIDIA quando a IA está ligada</div>
+</div></body></html>"""
+
+
+@app.route("/verificar", methods=["POST"])
+def verificar():
+    arq = request.files.get("arquivo")
+    if not arq or not arq.filename:
+        return redirect("/")
+    ext = os.path.splitext(arq.filename)[1].lower()
+    if ext not in EXTENSOES:
+        return "Formato não suportado (use PDF, DOCX ou XLSX).", 400
+    slug = re.sub(r"[^a-z0-9]+", "-", os.path.splitext(arq.filename)[0].lower().encode("ascii", "ignore").decode()).strip("-")[:60]
+    slug = (slug or "documento") + "-" + str(int(time.time()))[-5:]
+    caminho = os.path.join(UPLOADS, slug + ext)
+    arq.save(caminho)
+    registro, _ = auditoria.verificar_reprodutibilidade(caminho, origem="upload via interface web")
+    registro["documento"]["nome"] = arq.filename
+    with open(os.path.join(SAIDA, f"{slug}.json"), "w") as f:
+        json.dump(registro, f, ensure_ascii=False, indent=2)
+    relatorio.gerar_relatorio(registro, os.path.join(SAIDA, f"{slug}.pdf"))
+    session["ultimo_relatorio"] = slug
+    return redirect(f"/relatorio/{slug}")
+
+
+@app.route("/relatorio/<slug>")
+def ver_relatorio(slug):
+    if not re.fullmatch(r"[a-z0-9\-]+", slug):
+        abort(404)
+    caminho = os.path.join(SAIDA, f"{slug}.json")
+    if not os.path.exists(caminho):
+        abort(404)
+    registro = json.load(open(caminho))
+    session["ultimo_relatorio"] = slug
+    return relatorio_html.render(registro, slug=slug)
+
+
+@app.route("/relatorio/<slug>/<tipo>")
+def baixar(slug, tipo):
+    if not re.fullmatch(r"[a-z0-9\-]+", slug) or tipo not in ("pdf", "json"):
+        abort(404)
+    caminho = os.path.join(SAIDA, f"{slug}.{tipo}")
+    if not os.path.exists(caminho):
+        abort(404)
+    return send_file(caminho, as_attachment=True)
+
+
+if __name__ == "__main__":
+    app.run(host="127.0.0.1", port=8000, debug=False)
