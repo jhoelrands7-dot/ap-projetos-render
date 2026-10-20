@@ -201,6 +201,46 @@ def home():
  </form>
  <p class="modo">IA nesta instância: <b>{modo_ia}</b> &middot; cada item do relatório mostra quem decidiu: regra determinística, IA (NVIDIA NIM), heurística simulada ou humano.</p>
 </div>
+<div class="card" style="margin-top:18px">
+ <h2>Verificar vários documentos (até 5)</h2>
+ <div class="drop">
+  <input type="file" id="fila-input" multiple accept=".pdf,.docx,.xlsx">
+  <p style="color:#667;font-size:12.5px;margin:12px 0">Selecione até 5 arquivos (PDF, DOCX ou XLSX). Eles são enviados <b>um por vez</b>, nesta ordem, e cada relatório é liberado assim que fica pronto. Cada documento leva cerca de 1 a 2 minutos.</p>
+  <button class="btn" id="fila-btn" type="button">Verificar em fila</button>
+ </div>
+ <div id="fila-progresso" style="font-size:13.5px;margin-top:10px"></div>
+ <ul id="fila-lista" style="list-style:none;padding:0;margin:10px 0 0;font-size:13.5px"></ul>
+</div>
+<script>
+(function(){{
+ var inp=document.getElementById("fila-input"),btn=document.getElementById("fila-btn"),
+     prog=document.getElementById("fila-progresso"),lista=document.getElementById("fila-lista");
+ btn.addEventListener("click",function(){{
+  var arqs=Array.prototype.slice.call(inp.files||[]).slice(0,5);
+  if(!arqs.length){{prog.textContent="Selecione de 1 a 5 arquivos primeiro.";return;}}
+  if((inp.files||[]).length>5){{prog.textContent="Mais de 5 selecionados: só os 5 primeiros entram na fila.";}}
+  btn.disabled=true;lista.innerHTML="";
+  var itens=arqs.map(function(a,i){{
+   var li=document.createElement("li");li.style.cssText="padding:7px 0;border-bottom:1px solid #e6eaf1";
+   li.textContent=(i+1)+". "+a.name+" - aguardando";lista.appendChild(li);return li;}});
+  var i=0;
+  function passo(){{
+   if(i>=arqs.length){{prog.innerHTML="<b>Fila concluída.</b> Os relatórios ficam no histórico abaixo enquanto o serviço estiver acordado.";btn.disabled=false;return;}}
+   var a=arqs[i],li=itens[i],n=i+1;
+   prog.textContent="Processando "+n+" de "+arqs.length+": "+a.name+" (pode levar 1 a 2 minutos)...";
+   li.innerHTML="<b>"+n+". "+a.name+"</b> - processando...";
+   var fd=new FormData();fd.append("arquivo",a,a.name);
+   fetch("/verificar?modo=json",{{method:"POST",body:fd}}).then(function(r){{
+    if(!r.ok)throw new Error("HTTP "+r.status);return r.json();}}).then(function(d){{
+    li.innerHTML="<b>"+n+". "+a.name+"</b> - pronto: <a href='"+d.url+"'>abrir relatório</a>";
+    i++;passo();}}).catch(function(e){{
+    li.innerHTML="<b>"+n+". "+a.name+"</b> - <span style='color:#a22b28'>falhou ("+e.message+"). Tente este arquivo de novo.</span>";
+    i++;passo();}});
+  }}
+  passo();
+ }});
+}})();
+</script>
 <details class="card" id="historico"><summary style="cursor:pointer;font-weight:600">Histórico de documentos (secundário)</summary>
  <table><tr><th>Documento</th><th>Resultado</th></tr>{linhas}</table>
 </details>
@@ -228,6 +268,8 @@ def verificar():
     with open(os.path.join(SAIDA, f"{slug}.json"), "w") as f:
         json.dump(registro, f, ensure_ascii=False, indent=2)
     relatorio.gerar_relatorio(registro, os.path.join(SAIDA, f"{slug}.pdf"))
+    if request.args.get("modo") == "json":
+        return {"slug": slug, "url": f"/relatorio/{slug}", "resumo": auditoria.resumo_status(registro["resultados"])}
     session["ultimo_relatorio"] = slug
     return redirect(f"/relatorio/{slug}")
 
