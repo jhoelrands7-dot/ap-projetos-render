@@ -47,9 +47,12 @@ CLIENTE_NOME = os.environ.get("CLIENTE_NOME", "AP Consultoria e Projetos")
 CLIENTE_LOGO = os.environ.get("CLIENTE_LOGO", "/static/logo_ap.png")  # "" = nome em texto, sem logo
 CLIENTE_TAGLINE = os.environ.get("CLIENTE_TAGLINE", "Verificação de documentos de engenharia")
 LOGIN_USUARIO = os.environ.get("LOGIN_USUARIO", "ap")
-MARCA_COR1 = os.environ.get("MARCA_COR1", "#2b3550")
-MARCA_COR2 = os.environ.get("MARCA_COR2", "#1b2333")
-MARCA_COR3 = os.environ.get("MARCA_COR3", "#131a27")
+def _cor(v, padrao):
+    v = (v or "").strip() or padrao
+    return v if v.startswith("#") else "#" + v  # env/.env nao aceita '#' (vira comentario)
+MARCA_COR1 = _cor(os.environ.get("MARCA_COR1"), "#2b3550")
+MARCA_COR2 = _cor(os.environ.get("MARCA_COR2"), "#1b2333")
+MARCA_COR3 = _cor(os.environ.get("MARCA_COR3"), "#131a27")
 MARCA_GRAD = f"linear-gradient(135deg,{MARCA_COR1} 0%,{MARCA_COR2} 60%,{MARCA_COR3} 100%)"
 MARCA_GRAD_LOGIN = f"linear-gradient(135deg,{MARCA_COR1},{MARCA_COR3})"
 CLIENTE_NOTA = os.environ.get("CLIENTE_NOTA", "")  # nota extra na tela de login (ex.: disclaimer de demonstracao)
