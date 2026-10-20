@@ -25,7 +25,7 @@ from datetime import datetime, timezone
 
 import auditoria, extratores, ia
 
-VERSAO = "extracao-orcamento v0.3 (2026-10-20; staging; checklist enxuto; R1 quantitativo, R2 anti-eco cruzado, R3 numero fora de contexto; sem OCR)"
+VERSAO = "extracao-orcamento v0.3.1 (2026-10-20; staging; checklist enxuto; R1/R2/R3; trava-tipo prioriza nome do campo; eco exige 3+ chars; sem OCR)"
 ST_EXTRAIDO, ST_NAO, ST_AMBIGUO, ST_NAOVERIF = "Extraído", "Não encontrado", "Ambíguo", "Não verificado"
 
 COLS = {"valor": "Valor extraído", "unidade": "Unidade encontrada", "status": "Status da extração",
@@ -289,7 +289,7 @@ def _revisar(fid, campo, res, paginas_norm):
     # pega o caso de a IA copiar o TITULO de uma lista de dados do documento,
     # ex.: campo "Potência nominal do motor" -> valor "potencia nominal")
     nv, nc, nd = _norm(valor), _norm(campo["campo"]), _norm(campo["definicao"])
-    eco_contido = nv and nc and (nv in nc or nc in nv)
+    eco_contido = nv and nc and ((len(nv) >= 3 and nv in nc) or nc in nv)
     pal_v = [w for w in re.findall(r"[a-z]{4,}", nv) if w not in _STOP]
     pal_c = set(re.findall(r"[a-z]{4,}", nc + " " + nd))
     sobrepos = (sum(1 for w in pal_v if w in pal_c) / len(pal_v)) if pal_v else 0
@@ -308,7 +308,7 @@ def _revisar(fid, campo, res, paginas_norm):
         return ST_AMBIGUO, valor, unidade, None, evid, (obs + " | " if obs else "") + \
             "Revisão automática: evidência não localizada no texto extraído — conferir no documento"
     # trava 1: tipo do valor incompativel com o tipo do campo (deslocamento entre irmaos)
-    tipo_campo = _tipo_de((campo["campo"] or "") + " " + (campo["definicao"] or "")[:80], _TIPO_CAMPO)
+    tipo_campo = _tipo_de(campo["campo"] or "", _TIPO_CAMPO) or _tipo_de((campo["definicao"] or "")[:80], _TIPO_CAMPO)
     tipo_valor = _tipo_de(valor + " " + unidade, _TIPOS_VALOR)
     if tipo_campo and tipo_valor and tipo_campo != tipo_valor:
         return ST_AMBIGUO, valor, unidade, achada[0], evid, (obs + " | " if obs else "") + \
