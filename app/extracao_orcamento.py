@@ -100,7 +100,7 @@ def _chama_ia(msgs, timeout=150, tentativas=2):
     chave = os.environ.get("NVIDIA_API_KEY")
     if not chave:
         return None
-    corpo = {"model": ia.MODELO, "messages": msgs, "max_tokens": 3500,
+    corpo = {"model": ia.MODELO, "messages": msgs, "max_tokens": 2200,
              "temperature": 0, "seed": 42, "stream": False}
     for _ in range(tentativas):
         req = urllib.request.Request(ia.ENDPOINT, data=json.dumps(corpo).encode(),
@@ -125,22 +125,29 @@ def _parse_lista(conteudo):
 
 
 def _extrair_categoria(cat, itens, paginas):
-    """Retorna {id: {valor, unidade, pagina, evidencia, obs, ia_ok}}"""
-    sel = _selecionar_paginas(itens, paginas)
-    trechos = "\n".join(f"[[PÁGINA {p.numero or 1}]]\n{p.texto}" for p in sel)
-    lista = "\n".join(f'- {c["id"]}: campo "{c["campo"]}" — {(c["definicao"] or "")[:150]}'
-                      + (f' (unidade típica: {c["unidade_ref"]})' if c["unidade_ref"] else "")
-                      for c in itens)
-    bruto = _chama_ia([{"role": "user", "content": PROMPT.format(categoria=cat, lista=lista, trechos=trechos)}])
-    if bruto is None:
-        return {c["id"]: {"ia_ok": False} for c in itens}
+    """Retorna {id: {valor, unidade, pagina, evidencia, obs, ia_ok}}.
+    Lotes de ate 8 campos por chamada: o NIM gratuito estoura timeout em
+    prompts/saidas grandes; lotes menores concluem dentro do timeout."""
     out = {}
-    for item in _parse_lista(bruto):
-        if isinstance(item, dict) and item.get("id"):
-            item["ia_ok"] = True
-            out[str(item["id"]).strip()] = item
-    for c in itens:
-        out.setdefault(c["id"], {"ia_ok": True, "valor": "não encontrado", "obs": "IA não retornou este campo"})
+    for i in range(0, len(itens), 8):
+        lote = itens[i:i + 8]
+        sel = _selecionar_paginas(lote, paginas, cap=12000)
+        trechos = "\n".join(f"[[PÁGINA {p.numero or 1}]]\n{p.texto}" for p in sel)
+        lista = "\n".join(f'- {c["id"]}: campo "{c["campo"]}" — {(c["definicao"] or "")[:120]}'
+                          + (f' (unidade típica: {c["unidade_ref"]})' if c["unidade_ref"] else "")
+                          for c in lote)
+        bruto = _chama_ia([{"role": "user", "content": PROMPT.format(categoria=cat, lista=lista, trechos=trechos)}],
+                          timeout=120, tentativas=3)
+        if bruto is None:
+            out.update({c["id"]: {"ia_ok": False} for c in lote})
+            continue
+        achou = {}
+        for item in _parse_lista(bruto):
+            if isinstance(item, dict) and item.get("id"):
+                item["ia_ok"] = True
+                achou[str(item["id"]).strip()] = item
+        for c in lote:
+            out[c["id"]] = achou.get(c["id"], {"ia_ok": True, "valor": "não encontrado", "obs": "IA não retornou este campo"})
     return out
 
 
