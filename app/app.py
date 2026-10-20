@@ -202,6 +202,7 @@ def home():
    <div class="carregando" id="um-loading" role="status"><span class="spin"></span>Analisando o documento... leva de 1 a 3 minutos. Não feche esta página.<div class="barra"><div></div></div></div>
   </div>
  </form>
+ <p class="modo" style="margin-top:14px"><b>Novo (teste):</b> <a href="/orcamento">extração de checklist de orçamento</a> (módulo experimental).</p>
  <p class="modo">IA nesta instância: <b>{modo_ia}</b> &middot; cada item do relatório mostra quem decidiu: regra determinística, IA (NVIDIA NIM), heurística simulada ou humano.</p>
 </div>
 <div class="card" style="margin-top:18px">
@@ -417,6 +418,134 @@ def baixar(slug, tipo):
     if not os.path.exists(caminho):
         abort(404)
     return send_file(caminho, as_attachment=True)
+
+
+
+
+# --- Extracao de checklist de orcamento (EXPERIMENTAL - so nesta branch/staging) ---
+import threading, uuid
+import extracao_orcamento
+
+JOBS_ORC = {}
+
+
+def _limpar_jobs():
+    agora = time.time()
+    for jid, j in list(JOBS_ORC.items()):
+        if agora - j.get("criado_em", agora) > 3 * 3600:
+            for k in ("pdf_path", "xlsx_path", "saida_path"):
+                try:
+                    if j.get(k) and os.path.exists(j[k]):
+                        os.remove(j[k])
+                except OSError:
+                    pass
+            JOBS_ORC.pop(jid, None)
+
+
+def _roda_orcamento(jid):
+    j = JOBS_ORC[jid]
+    try:
+        stats = extracao_orcamento.executar(j["pdf_path"], j["xlsx_path"], j["saida_path"])
+        j.update(status="pronto", stats=stats)
+    except Exception as e:
+        j.update(status="erro", erro=str(e)[:300])
+
+
+PAG_ORCAMENTO = """<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Extração de checklist de orçamento | AP (teste)</title>
+<style>__CSS__ .spin{display:inline-block;width:16px;height:16px;border:3px solid #c9d4e4;border-top-color:#1f6fb2;border-radius:50%;animation:giro .8s linear infinite;vertical-align:-3px;margin-right:8px}@keyframes giro{to{transform:rotate(360deg)}}.barra{margin-top:10px;height:8px;background:#e3e9f2;border-radius:4px;overflow:hidden}.barra>div{height:100%;width:30%;background:#1f6fb2;border-radius:4px;animation:carrega 1.4s ease-in-out infinite}@keyframes carrega{0%{margin-left:-30%}100%{margin-left:100%}}.warn{background:#fdf6e3;border:1px solid #e3d193;border-radius:8px;padding:12px 16px;font-size:12.5px;color:#5d5426;line-height:1.55;margin-top:14px}label{display:block;font-size:13.5px;font-weight:600;margin:14px 0 6px;color:#2b3550}</style></head>
+<body>
+<header class="topo"><img src="/static/logo_ap.png" alt="AP Consultoria e Projetos">
+<div><div class="t">Extração de checklist de orçamento</div>
+<div class="s">Módulo experimental &middot; ambiente de teste (staging) &middot; não é o app da apresentação</div></div></header>
+<div class="wrap">
+<div class="card">
+ <h2>1. Envie o documento e o checklist</h2>
+ <form id="f">
+  <label for="doc">Documento técnico (PDF com texto; escaneado não funciona - sem OCR)</label>
+  <input type="file" id="doc" name="documento" accept=".pdf,application/pdf" required>
+  <label for="chk">Checklist de orçamento (XLSX no layout padrão: aba "Checklist de orçamento")</label>
+  <input type="file" id="chk" name="checklist" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
+  <p style="margin-top:16px"><button class="btn" type="submit">Extrair campos</button></p>
+ </form>
+ <div id="prog" style="display:none;margin-top:14px;font-size:14px;color:#2b3550;font-weight:600"><span class="spin"></span><span id="prog-txt">Extraindo... leva de 2 a 4 minutos. Não feche esta página.</span><div class="barra"><div></div></div></div>
+ <div id="erro" role="alert" style="display:none;background:#fff0ef;color:#a22b28;padding:10px;border-radius:5px;margin-top:12px;font-size:13.5px"></div>
+ <div id="pronto" style="display:none;margin-top:16px"></div>
+</div>
+<div class="warn"><b>O que este módulo faz:</b> a IA propõe valor, unidade, página e evidência para cada campo do checklist; uma revisão automática confere se a evidência existe de verdade no texto (o que não confirma vira "Ambíguo" ou "Não encontrado").<br>
+<b>Limites:</b> sem OCR; deslocamento entre campos parecidos (ex.: material do corpo vs. do impulsor) ainda exige conferência humana; a IA pode oscilar entre execuções. A planilha sai no mesmo layout do checklist enviado, com uma aba "Auditoria" ao final (hash dos arquivos, modelo, data).<br>
+<b>Privacidade:</b> trechos do documento são enviados à NVIDIA (IA) durante a extração. Teste uma extração por vez — este ambiente processa uma requisição por vez.</div>
+<div class="rodape">extracao-orcamento v0.1 &middot; staging &middot; <a href="/">voltar ao verificador (Módulo 1)</a></div>
+</div>
+<script>
+var f=document.getElementById("f"),prog=document.getElementById("prog"),ptxt=document.getElementById("prog-txt"),
+    erro=document.getElementById("erro"),pronto=document.getElementById("pronto");
+f.addEventListener("submit",function(ev){
+ ev.preventDefault();erro.style.display="none";pronto.style.display="none";
+ var fd=new FormData(f);prog.style.display="block";
+ fetch("/orcamento/novo",{method:"POST",body:fd}).then(function(r){
+  if(!r.ok)return r.text().then(function(t){throw new Error(t)});
+  return r.json();}).then(function(d){
+  var ini=Date.now();
+  var tick=setInterval(function(){
+   var s=Math.floor((Date.now()-ini)/1000),m=Math.floor(s/60),ss=("0"+(s%60)).slice(-2);
+   ptxt.textContent="Extraindo... há "+m+":"+ss+". Não feche esta página.";
+   fetch("/orcamento/"+d.job+"/status").then(function(r){return r.json();}).then(function(st){
+    if(st.status==="pronto"){clearInterval(tick);prog.style.display="none";
+     var chips=Object.keys(st.stats||{}).map(function(k){return "<b>"+k+": "+st.stats[k]+"</b>"}).join(" &middot; ");
+     pronto.innerHTML='<div class="card" style="margin:0"><h2>2. Baixe a planilha preenchida</h2><p style="font-size:13.5px">'+chips+'</p><p><a class="btn" href="/orcamento/'+d.job+'/baixar">Baixar XLSX preenchido</a></p></div>';
+     pronto.style.display="block";}
+    else if(st.status==="erro"){clearInterval(tick);prog.style.display="none";
+     erro.textContent="A extração falhou: "+(st.erro||"erro desconhecido");erro.style.display="block";}
+   }).catch(function(){});
+  },5000);
+ }).catch(function(e){prog.style.display="none";erro.textContent="Falha no envio: "+e.message;erro.style.display="block";});
+});
+</script></body></html>"""
+
+
+@app.route("/orcamento")
+def orcamento():
+    return PAG_ORCAMENTO.replace("__CSS__", CSS)
+
+
+@app.route("/orcamento/novo", methods=["POST"])
+def orcamento_novo():
+    _limpar_jobs()
+    doc = request.files.get("documento")
+    chk = request.files.get("checklist")
+    if not doc or not doc.filename or not chk or not chk.filename:
+        return "Envie o documento (PDF) e o checklist (XLSX).", 400
+    if os.path.splitext(doc.filename)[1].lower() != ".pdf":
+        return "Documento precisa ser PDF.", 400
+    if os.path.splitext(chk.filename)[1].lower() != ".xlsx":
+        return "Checklist precisa ser XLSX.", 400
+    jid = uuid.uuid4().hex[:12]
+    pdf_path = os.path.join(UPLOADS, f"orc-{jid}.pdf")
+    xlsx_path = os.path.join(UPLOADS, f"orc-{jid}.xlsx")
+    saida_path = os.path.join(SAIDA, f"orc-{jid}-preenchido.xlsx")
+    doc.save(pdf_path); chk.save(xlsx_path)
+    JOBS_ORC[jid] = {"status": "processando", "criado_em": time.time(),
+                     "pdf_path": pdf_path, "xlsx_path": xlsx_path, "saida_path": saida_path}
+    threading.Thread(target=_roda_orcamento, args=(jid,), daemon=True).start()
+    return {"job": jid}
+
+
+@app.route("/orcamento/<jid>/status")
+def orcamento_status(jid):
+    j = JOBS_ORC.get(jid)
+    if not j:
+        return {"status": "erro", "erro": "job não encontrado (o serviço pode ter reiniciado; envie de novo)"}, 404
+    return {"status": j["status"], "stats": j.get("stats"), "erro": j.get("erro")}
+
+
+@app.route("/orcamento/<jid>/baixar")
+def orcamento_baixar(jid):
+    j = JOBS_ORC.get(jid)
+    if not j or j.get("status") != "pronto" or not os.path.exists(j["saida_path"]):
+        abort(404)
+    return send_file(j["saida_path"], as_attachment=True,
+                     download_name="checklist_orcamento_preenchido.xlsx")
 
 
 if __name__ == "__main__":
