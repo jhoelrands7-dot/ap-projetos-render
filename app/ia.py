@@ -94,8 +94,10 @@ TRECHO DO DOCUMENTO:
 \"\"\""""
 
 
-def avaliar_classe_b(item, descricao, trecho, timeout=30):
-    """Chama o LLM. Retorna dict {status, observacao, evidencia} ou None (fallback)."""
+def avaliar_classe_b(item, descricao, trecho, timeout=60, tentativas=2):
+    """Chama o LLM. Retorna dict {status, observacao, evidencia} ou None (fallback).
+    1 retry: a conta gratuita do NIM oscila de latência e um estouro isolado
+    não deve derrubar o item para a heurística."""
     chave = os.environ.get("NVIDIA_API_KEY")
     if not chave:
         return None
@@ -106,32 +108,32 @@ def avaliar_classe_b(item, descricao, trecho, timeout=30):
         "seed": 42,
         "max_tokens": 1500,
     }
-    req = urllib.request.Request(
-        ENDPOINT,
-        data=json.dumps(corpo).encode(),
-        headers={"Authorization": f"Bearer {chave}", "Content-Type": "application/json"},
-        method="POST")
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            dados = json.loads(resp.read().decode())
-        conteudo = dados["choices"][0]["message"].get("content") or ""
-        m = re.search(r"\{.*\}", conteudo, re.DOTALL)
-        if not m:
-            return None
-        res = json.loads(m.group(0))
-        if res.get("status") not in _STATUS_VALIDOS:
-            return None
-        ULTIMAS_BRUTAS.append({"item": item, "resposta": conteudo[:2000]})
-        _registrar_sucesso()
-        return {"status": res["status"],
-                "observacao": res.get("justificativa", "")[:400],
-                "evidencia": (res.get("evidencia") or "")[:300]}
-    except urllib.error.HTTPError as e:
-        _registrar_falha(f"HTTP {e.code}")
-        return None
-    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, KeyError, ValueError) as e:
-        _registrar_falha(str(e)[:160])
-        return None
+    for tentativa in range(tentativas):
+        req = urllib.request.Request(
+            ENDPOINT,
+            data=json.dumps(corpo).encode(),
+            headers={"Authorization": f"Bearer {chave}", "Content-Type": "application/json"},
+            method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                dados = json.loads(resp.read().decode())
+            conteudo = dados["choices"][0]["message"].get("content") or ""
+            m = re.search(r"\{.*\}", conteudo, re.DOTALL)
+            if not m:
+                raise ValueError("resposta sem JSON")
+            res = json.loads(m.group(0))
+            if res.get("status") not in _STATUS_VALIDOS:
+                raise ValueError("status inválido")
+            ULTIMAS_BRUTAS.append({"item": item, "resposta": conteudo[:2000]})
+            _registrar_sucesso()
+            return {"status": res["status"],
+                    "observacao": res.get("justificativa", "")[:400],
+                    "evidencia": (res.get("evidencia") or "")[:300]}
+        except urllib.error.HTTPError as e:
+            _registrar_falha(f"HTTP {e.code}" + (f" (tentativa {tentativa+1})" if tentativas > 1 else ""))
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, KeyError, ValueError) as e:
+            _registrar_falha(str(e)[:160] + (f" (tentativa {tentativa+1})" if tentativas > 1 else ""))
+    return None
 
 
 PROMPT_COMENTARIO = """Você é um revisor técnico sênior de engenharia escrevendo para outro engenheiro.

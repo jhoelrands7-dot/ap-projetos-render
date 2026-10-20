@@ -199,7 +199,7 @@ def home():
    <input type="file" name="arquivo" accept=".pdf,.docx,.xlsx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/msword,application/vnd.ms-excel" required>
    <p style="color:#667;font-size:12.5px;margin:12px 0">PDF, DOCX ou XLSX. O documento é processado localmente.</p>
    <button class="btn" type="submit">Verificar documento</button>
-   <div class="carregando" id="um-loading" role="status"><span class="spin"></span>Analisando o documento... leva de 1 a 2 minutos. Não feche esta página.<div class="barra"><div></div></div></div>
+   <div class="carregando" id="um-loading" role="status"><span class="spin"></span>Analisando o documento... leva de 1 a 3 minutos. Não feche esta página.<div class="barra"><div></div></div></div>
   </div>
  </form>
  <p class="modo">IA nesta instância: <b>{modo_ia}</b> &middot; cada item do relatório mostra quem decidiu: regra determinística, IA (NVIDIA NIM), heurística simulada ou humano.</p>
@@ -211,7 +211,7 @@ def home():
   <button class="btn" id="fila-add" type="button" style="background:#4a5b74">Adicionar documento</button>
   <div id="fila-selecao" style="font-size:13px;color:#445;margin-top:10px">Nenhum documento na fila.</div>
   <ul id="fila-pendente" style="list-style:none;padding:0;margin:6px 0 0;font-size:13.5px"></ul>
-  <p style="color:#667;font-size:12.5px;margin:12px 0">Toque em <b>Adicionar documento</b> e escolha <b>um arquivo por vez</b> (PDF, DOCX ou XLSX), até 5. Eles são enviados um por vez, nesta ordem, e cada relatório é liberado assim que fica pronto. Cada documento leva cerca de 1 a 2 minutos.</p>
+  <p style="color:#667;font-size:12.5px;margin:12px 0">Toque em <b>Adicionar documento</b> e escolha <b>um arquivo por vez</b> (PDF, DOCX ou XLSX), até 5. Eles são enviados um por vez, nesta ordem, e cada relatório é liberado assim que fica pronto. Cada documento leva cerca de 1 a 3 minutos.</p>
   <button class="btn" id="fila-btn" type="button">Verificar em fila</button>
  </div>
  <div id="fila-erro" role="alert" style="display:none;background:#fff0ef;color:#a22b28;padding:10px;border-radius:5px;margin-top:10px;font-size:13.5px"></div>
@@ -287,7 +287,7 @@ def home():
     li.innerHTML="<b>"+n+". "+a.name+"</b> - processando há "+m+":"+ss+"..."+(tent?" (nova tentativa)":"");
    }}
    var fl=document.getElementById("fila-loading"),flt=document.getElementById("fila-loading-txt");
-   fl.style.display="block";flt.textContent="Analisando documento "+n+" de "+arqs.length+": "+a.name+" (1 a 2 min cada) — não feche esta página.";
+   fl.style.display="block";flt.textContent="Analisando documento "+n+" de "+arqs.length+": "+a.name+" (1 a 3 min cada) — não feche esta página.";
    rot();var tick=setInterval(rot,1000);
    function enviar(){{
     var ctl=new AbortController(),to=setTimeout(function(){{ctl.abort();}},300000);
