@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Ponto de troca para IA real nas regras de classe B (NVIDIA NIM).
+Ponto de troca para IA real (OpenRouter como provedor principal, NVIDIA NIM como fallback).
 
 - A chave NUNCA fica no código: lida da variável de ambiente NVIDIA_API_KEY.
 - Sem chave (ou qualquer erro de rede/parse), o chamador cai na heurística
@@ -13,7 +13,46 @@ import json, os, re, urllib.request, urllib.error
 
 ENDPOINT = "https://integrate.api.nvidia.com/v1/chat/completions"
 MODELO = os.environ.get("NVIDIA_MODELO", "meta/llama-3.2-11b-vision-instruct")
+OPENROUTER_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
+OPENROUTER_MODELO = os.environ.get("OPENROUTER_MODEL", "openai/gpt-4o-mini")
 ROTULO_IA = f"IA via NVIDIA NIM ({MODELO})"
+ULTIMO_PROVEDOR = None  # "modelo (provedor)" da última chamada bem-sucedida
+
+
+def _provedores():
+    """Cadeia de provedores: OpenRouter primeiro (se OPENROUTER_API_KEY), NVIDIA NIM como fallback."""
+    prov = []
+    or_key = os.environ.get("OPENROUTER_API_KEY")
+    if or_key:
+        prov.append(("OpenRouter", OPENROUTER_ENDPOINT, or_key, OPENROUTER_MODELO))
+    nv_key = os.environ.get("NVIDIA_API_KEY")
+    if nv_key:
+        prov.append(("NVIDIA NIM", ENDPOINT, nv_key, MODELO))
+    return prov
+
+
+def chamar_chat(mensagens, max_tokens=1500, timeout=60, tentativas=2):
+    """Chama o primeiro provedor disponível (OpenRouter -> NVIDIA). 
+    Retorna (conteudo, rotulo) ou (None, None) se todos falharem."""
+    global ULTIMO_PROVEDOR
+    for nome, url, chave, modelo in _provedores():
+        corpo = {"model": modelo, "messages": mensagens, "max_tokens": max_tokens,
+                 "temperature": 0, "seed": 42, "stream": False}
+        for tentativa in range(tentativas):
+            req = urllib.request.Request(
+                url, data=json.dumps(corpo).encode(),
+                headers={"Authorization": f"Bearer {chave}", "Content-Type": "application/json"},
+                method="POST")
+            try:
+                with urllib.request.urlopen(req, timeout=timeout) as resp:
+                    dados = json.loads(resp.read().decode())
+                conteudo = dados["choices"][0]["message"].get("content") or ""
+                ULTIMO_PROVEDOR = f"{modelo} ({nome})"
+                _registrar_sucesso()
+                return conteudo, ULTIMO_PROVEDOR
+            except Exception as e:
+                _registrar_falha(f"{nome}: {type(e).__name__} {str(e)[:120]} (tentativa {tentativa + 1})")
+    return None, None
 
 # --- observabilidade mínima (honestidade na demo) ---
 ULTIMO_ERRO = None
@@ -46,37 +85,38 @@ def status():
 
 
 def saude(timeout=20):
-    """Healthcheck real: 1 completition mínima contra o endpoint. Sem chave, ok=False."""
-    chave = os.environ.get("NVIDIA_API_KEY")
-    if not chave:
-        return {"modelo": MODELO, "ok": False, "http": None, "detalhe": "NVIDIA_API_KEY ausente nesta instância"}
-    corpo = {"model": MODELO,
+    """Healthcheck real: 1 completition mínima contra o primeiro provedor disponível."""
+    prov = _provedores()
+    if not prov:
+        return {"modelo": None, "ok": False, "http": None, "detalhe": "nenhuma chave de IA nesta instância (OPENROUTER_API_KEY / NVIDIA_API_KEY)"}
+    nome, url, chave, modelo = prov[0]
+    corpo = {"model": modelo,
              "messages": [{"role": "user", "content": "Responda apenas: ok"}],
              "temperature": 0, "max_tokens": 5}
     req = urllib.request.Request(
-        ENDPOINT, data=json.dumps(corpo).encode(),
+        url, data=json.dumps(corpo).encode(),
         headers={"Authorization": f"Bearer {chave}", "Content-Type": "application/json"},
         method="POST")
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             json.loads(resp.read().decode())
-        return {"modelo": MODELO, "ok": True, "http": 200, "detalhe": "endpoint respondeu"}
+        return {"modelo": f"{modelo} ({nome})", "ok": True, "http": 200, "detalhe": "endpoint respondeu"}
     except urllib.error.HTTPError as e:
         det = ""
         try:
             det = e.read().decode()[:200]
         except Exception:
             pass
-        return {"modelo": MODELO, "ok": False, "http": e.code, "detalhe": det or str(e)}
+        return {"modelo": f"{modelo} ({nome})", "ok": False, "http": e.code, "detalhe": det or str(e)}
     except Exception as e:
-        return {"modelo": MODELO, "ok": False, "http": None, "detalhe": str(e)[:200]}
+        return {"modelo": f"{modelo} ({nome})", "ok": False, "http": None, "detalhe": str(e)[:200]}
 
 
 _STATUS_VALIDOS = {"CONFORME", "NÃO CONFORME", "EVIDÊNCIA INSUFICIENTE", "NÃO SE APLICA"}
 
 
 def disponivel():
-    return bool(os.environ.get("NVIDIA_API_KEY"))
+    return bool(_provedores())
 
 
 PROMPT = """Você é um verificador de documentos de engenharia. Avalie o item de check-list abaixo contra o trecho do documento.
@@ -98,40 +138,25 @@ def avaliar_classe_b(item, descricao, trecho, timeout=60, tentativas=2):
     """Chama o LLM. Retorna dict {status, observacao, evidencia} ou None (fallback).
     1 retry: a conta gratuita do NIM oscila de latência e um estouro isolado
     não deve derrubar o item para a heurística."""
-    chave = os.environ.get("NVIDIA_API_KEY")
-    if not chave:
+    if not disponivel():
         return None
-    corpo = {
-        "model": MODELO,
-        "messages": [{"role": "user", "content": PROMPT.format(item=item, descricao=descricao, trecho=trecho[:20000])}],
-        "temperature": 0,
-        "seed": 42,
-        "max_tokens": 1500,
-    }
+    msgs = [{"role": "user", "content": PROMPT.format(item=item, descricao=descricao, trecho=trecho[:20000])}]
     for tentativa in range(tentativas):
-        req = urllib.request.Request(
-            ENDPOINT,
-            data=json.dumps(corpo).encode(),
-            headers={"Authorization": f"Bearer {chave}", "Content-Type": "application/json"},
-            method="POST")
+        conteudo, provedor = chamar_chat(msgs, max_tokens=1500, timeout=timeout, tentativas=1)
+        if conteudo is None:
+            continue
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                dados = json.loads(resp.read().decode())
-            conteudo = dados["choices"][0]["message"].get("content") or ""
             m = re.search(r"\{.*\}", conteudo, re.DOTALL)
             if not m:
                 raise ValueError("resposta sem JSON")
             res = json.loads(m.group(0))
             if res.get("status") not in _STATUS_VALIDOS:
                 raise ValueError("status inválido")
-            ULTIMAS_BRUTAS.append({"item": item, "resposta": conteudo[:2000]})
-            _registrar_sucesso()
+            ULTIMAS_BRUTAS.append({"item": item, "resposta": conteudo[:2000], "provedor": provedor})
             return {"status": res["status"],
                     "observacao": res.get("justificativa", "")[:400],
                     "evidencia": (res.get("evidencia") or "")[:300]}
-        except urllib.error.HTTPError as e:
-            _registrar_falha(f"HTTP {e.code}" + (f" (tentativa {tentativa+1})" if tentativas > 1 else ""))
-        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, KeyError, ValueError) as e:
+        except (json.JSONDecodeError, ValueError) as e:
             _registrar_falha(str(e)[:160] + (f" (tentativa {tentativa+1})" if tentativas > 1 else ""))
     return None
 
@@ -156,31 +181,19 @@ RESULTADOS DO CHECK-LIST:
 
 def comentar(resultados, timeout=60):
     """Gera resumo geral + comentário por item via LLM. Retorna dict ou None (fallback)."""
-    chave = os.environ.get("NVIDIA_API_KEY")
-    if not chave:
+    if not disponivel():
         return None
     itens = []
     for r in resultados:
         ev = r["evidencias"][0]["trecho"][:200] if r.get("evidencias") else ""
         itens.append({"item": r["item"], "descricao": r["descricao"], "status": r["status"],
                       "observacao": r["observacao"][:300], "evidencia": ev})
-    corpo = {
-        "model": MODELO,
-        "messages": [{"role": "user", "content": PROMPT_COMENTARIO.format(
-            itens_json=json.dumps(itens, ensure_ascii=False))}],
-        "temperature": 0,
-        "seed": 42,
-        "max_tokens": 4000,
-    }
-    req = urllib.request.Request(
-        ENDPOINT,
-        data=json.dumps(corpo).encode(),
-        headers={"Authorization": f"Bearer {chave}", "Content-Type": "application/json"},
-        method="POST")
+    msgs = [{"role": "user", "content": PROMPT_COMENTARIO.format(
+        itens_json=json.dumps(itens, ensure_ascii=False))}]
+    conteudo, provedor = chamar_chat(msgs, max_tokens=4000, timeout=timeout, tentativas=1)
+    if conteudo is None:
+        return None
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            dados = json.loads(resp.read().decode())
-        conteudo = dados["choices"][0]["message"].get("content") or ""
         m = re.search(r"\{.*\}", conteudo, re.DOTALL)
         if not m:
             return None
@@ -191,13 +204,9 @@ def comentar(resultados, timeout=60):
         validos = {r["item"] for r in resultados
                    if r["status"] in ("NÃO CONFORME", "EVIDÊNCIA INSUFICIENTE") and r.get("classe") != "C"}
         comentarios = {k: str(v)[:500] for k, v in comentarios.items() if k in validos}
-        ULTIMAS_BRUTAS.append({"item": "_analise_geral", "resposta": conteudo[:3000]})
-        _registrar_sucesso()
+        ULTIMAS_BRUTAS.append({"item": "_analise_geral", "resposta": conteudo[:3000], "provedor": provedor})
         return {"resumo": str(res["resumo"])[:1200], "comentarios": comentarios,
-                "modelo": MODELO}
-    except urllib.error.HTTPError as e:
-        _registrar_falha(f"HTTP {e.code}")
-        return None
-    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, KeyError, ValueError) as e:
+                "modelo": provedor or MODELO}
+    except (json.JSONDecodeError, ValueError) as e:
         _registrar_falha(str(e)[:160])
         return None

@@ -25,7 +25,7 @@ from datetime import datetime, timezone
 
 import auditoria, extratores, ia
 
-VERSAO = "extracao-orcamento v0.1 (2026-10-20; staging; sem OCR)"
+VERSAO = "extracao-orcamento v0.2 (2026-10-20; staging; OpenRouter+NVIDIA; trava anti-deslocamento; sem OCR)"
 ST_EXTRAIDO, ST_NAO, ST_AMBIGUO, ST_NAOVERIF = "Extraído", "Não encontrado", "Ambíguo", "Não verificado"
 
 COLS = {"valor": "Valor extraído", "unidade": "Unidade encontrada", "status": "Status da extração",
@@ -83,6 +83,8 @@ Regras duras:
   o número da página (do marcador) e uma evidência curta (até 20 palavras, COPIADA literalmente do trecho).
 - A evidência é obrigatória para qualquer valor preenchido.
 - Se houver mais de uma opção (ex.: "AISI 304 ou 316"), copie as opções como estão.
+- ATENÇÃO ao deslocamento entre campos irmãos: o valor tem que pertencer ao campo pedido
+  (ex.: não coloque a tensão no campo de potência). A evidência DEVE conter o próprio valor.
 - Se a informação for parcial ou indireta, ainda assim preencha e explique em "obs".
 
 CAMPOS (categoria {categoria}):
@@ -96,21 +98,9 @@ TRECHOS:
 
 
 def _chama_ia(msgs, timeout=150, tentativas=2):
-    """Mesma disciplina do ia.avaliar_classe_b: timeout + 1 retry. None se indisponível/falhou."""
-    chave = os.environ.get("NVIDIA_API_KEY")
-    if not chave:
-        return None
-    corpo = {"model": ia.MODELO, "messages": msgs, "max_tokens": 2200,
-             "temperature": 0, "seed": 42, "stream": False}
-    for _ in range(tentativas):
-        req = urllib.request.Request(ia.ENDPOINT, data=json.dumps(corpo).encode(),
-            headers={"Authorization": f"Bearer {chave}", "Content-Type": "application/json"}, method="POST")
-        try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                return json.loads(resp.read().decode())["choices"][0]["message"]["content"]
-        except Exception as e:
-            ia._registrar_falha(f"extracao: {type(e).__name__} {str(e)[:120]}")
-    return None
+    """Cadeia OpenRouter -> NVIDIA (ia.chamar_chat). None se indisponível/falhou."""
+    conteudo, _prov = ia.chamar_chat(msgs, max_tokens=2200, timeout=timeout, tentativas=tentativas)
+    return conteudo
 
 
 def _parse_lista(conteudo):
@@ -147,12 +137,80 @@ def _extrair_categoria(cat, itens, paginas):
                 item["ia_ok"] = True
                 achou[str(item["id"]).strip()] = item
         for c in lote:
-            out[c["id"]] = achou.get(c["id"], {"ia_ok": True, "valor": "não encontrado", "obs": "IA não retornou este campo"})
+            out[c["id"]] = achou.get(c["id"], {"ia_ok": True, "_sem_resposta": True})
     return out
 
 
+# Padroes de "tipo de valor" para a trava anti-deslocamento: se o campo pede
+# um tipo e o valor claramente parece OUTRO tipo, e deslocamento de linha.
+_TIPOS_VALOR = [
+    ("protecao_ip", re.compile(r"\bip\s?\d{2}\b", re.I)),
+    ("isolamento", re.compile(r"\b(clase|classe)\s+[abefh]\b", re.I)),
+    ("ruido", re.compile(r"\d+\s?db\b", re.I)),
+    ("tensao", re.compile(r"\d{3}\s?(/|o|e)?\s?\d{0,3}\s?v\b", re.I)),
+    ("frequencia", re.compile(r"\d+\s?hz\b", re.I)),
+    ("fases", re.compile(r"\b(mono|bi|tri)?f[aá]s", re.I)),
+    ("polos", re.compile(r"\d+\s*(o|ou)?\s*\d*\s?polos?\b", re.I)),
+    ("rotacao", re.compile(r"\d+\s?rpm\b", re.I)),
+    ("potencia", re.compile(r"\d+[.,]?\d*\s?(kw|cv|hp|w)\b", re.I)),
+    ("corrente", re.compile(r"\d+[.,]?\d*\s?a\b(?!si)", re.I)),
+    ("vazao", re.compile(r"\d+[.,]?\d*\s?(l/s|l/min|m3/h|m³/h|gpm)\b", re.I)),
+    ("pressao", re.compile(r"\d+[.,]?\d*\s?(bar|mca|psi|kgf|mpa|kpa|pa)\b", re.I)),
+    ("temperatura", re.compile(r"\d+\s?°[cf]\b", re.I)),
+]
+_TIPO_CAMPO = [
+    ("protecao_ip", re.compile(r"prote[cç][aã]o|grau de prote", re.I)),
+    ("isolamento", re.compile(r"isolamento", re.I)),
+    ("ruido", re.compile(r"ru[ií]do|n[ií]vel de som|sonoro", re.I)),
+    ("tensao", re.compile(r"tens[aã]o|voltagem", re.I)),
+    ("frequencia", re.compile(r"frequ[eê]ncia", re.I)),
+    ("fases", re.compile(r"fases", re.I)),
+    ("polos", re.compile(r"polos", re.I)),
+    ("rotacao", re.compile(r"rota[cç][aã]o|velocidade de giro", re.I)),
+    ("potencia", re.compile(r"pot[eê]ncia", re.I)),
+    ("corrente", re.compile(r"corrente|amperagem", re.I)),
+    ("vazao", re.compile(r"vaz[aã]o|caudal", re.I)),
+    ("pressao", re.compile(r"press[aã]o|amt|altura manom[eé]trica", re.I)),
+    ("temperatura", re.compile(r"temperatura", re.I)),
+]
+
+
+def _tipo_de(texto, regras):
+    for nome, rx in regras:
+        if rx.search(texto or ""):
+            return nome
+    return None
+
+
+def _tokens_distintivos(valor):
+    """Numeros e codigos com digitos (IP55 -> ip55, 416, 1.15...) + palavras >=4 letras."""
+    v = _norm(valor)
+    nums = re.findall(r"\d+[.,]?\d*", v)
+    palavras = [w for w in re.findall(r"[a-z]{4,}", v) if w not in _STOP]
+    return nums, palavras
+
+
+def _valor_na_vizinhanca(valor, evid, texto_pagina):
+    """O valor (seus tokens distintivos) aparece na evidencia ou numa janela de 80 chars em volta dela?"""
+    nums, palavras = _tokens_distintivos(valor)
+    if not nums and not palavras:
+        return True  # valor vago demais para julgar; outras regras cuidam
+    ne = _norm(evid)
+    janela = ne
+    if texto_pagina is not None and ne and ne in texto_pagina:
+        i = texto_pagina.find(ne)
+        janela = texto_pagina[max(0, i - 80): i + len(ne) + 80]
+    ok_num = all(n in janela for n in nums) if nums else True
+    if palavras:
+        hits = sum(1 for w in palavras if w in janela)
+        ok_pal = hits >= max(1, (len(palavras) + 1) // 2)
+    else:
+        ok_pal = True
+    return ok_num and ok_pal
+
+
 def _revisar(fid, campo, res, paginas_norm):
-    """Revisao anti-eco deterministica. Devolve (status, valor, unidade, pagina, evidencia, obs)."""
+    """Revisao anti-eco + anti-deslocamento deterministica. Devolve (status, valor, unidade, pagina, evidencia, obs)."""
     valor = str(res.get("valor") or "").strip()
     unidade = str(res.get("unidade") or "").strip()
     evid = str(res.get("evidencia") or "").strip()
@@ -164,6 +222,8 @@ def _revisar(fid, campo, res, paginas_norm):
         pagina = None
     if not res.get("ia_ok"):
         return ST_NAOVERIF, "", "", None, "", "IA indisponível nesta execução (falha de rede/timeout); campo não verificado"
+    if res.get("_sem_resposta"):
+        return ST_NAOVERIF, "", "", None, "", "IA não retornou este campo nesta execução (falha da IA, NÃO significa ausência no documento); campo não verificado"
     neg = ("", "nao encontrado", "nao encontrada", "not found", "n/a", "na",
            "no encontrado", "no encontrada", "no se menciona", "no especificado",
            "no especifica", "sin informacion", "sin datos", "no consta", "no aplica")
@@ -184,6 +244,17 @@ def _revisar(fid, campo, res, paginas_norm):
     if not achada:
         return ST_AMBIGUO, valor, unidade, None, evid, (obs + " | " if obs else "") + \
             "Revisão automática: evidência não localizada no texto extraído — conferir no documento"
+    # trava 1: tipo do valor incompativel com o tipo do campo (deslocamento entre irmaos)
+    tipo_campo = _tipo_de((campo["campo"] or "") + " " + (campo["definicao"] or "")[:80], _TIPO_CAMPO)
+    tipo_valor = _tipo_de(valor + " " + unidade, _TIPOS_VALOR)
+    if tipo_campo and tipo_valor and tipo_campo != tipo_valor:
+        return ST_AMBIGUO, valor, unidade, achada[0], evid, (obs + " | " if obs else "") + \
+            f"Revisão automática: valor parece '{tipo_valor}' mas o campo pede '{tipo_campo}' (possível deslocamento entre campos) — conferir no documento"
+    # trava 2: o valor tem que constar na evidencia (ou numa janela de 80 chars em volta)
+    texto_pag = dict(paginas_norm).get(achada[0])
+    if not _valor_na_vizinhanca(valor, evid, texto_pag):
+        return ST_AMBIGUO, valor, unidade, achada[0], evid, (obs + " | " if obs else "") + \
+            "Revisão automática: valor não consta na evidência apontada (possível deslocamento entre campos) — conferir no documento"
     if pagina not in achada:
         obs = (obs + " | " if obs else "") + f"Página corrigida pela revisão automática (IA disse {pagina})"
         pagina = achada[0]
@@ -261,12 +332,12 @@ def executar(caminho_pdf, caminho_xlsx, caminho_saida):
         ("SHA-256 do documento", auditoria.sha256_arquivo(caminho_pdf)),
         ("Checklist (arquivo)", os.path.basename(caminho_xlsx)),
         ("SHA-256 do checklist", auditoria.sha256_arquivo(caminho_xlsx)),
-        ("Modelo de IA", ia.MODELO + (" (NVIDIA NIM; trechos enviados à NVIDIA)" if ia.disponivel() else " (SEM CHAVE - nada extraído)")),
+        ("Modelo de IA", (ia.ULTIMO_PROVEDOR or "nenhum (sem chave ou todas as chamadas falharam)") + "; cadeia: OpenRouter (OPENROUTER_API_KEY) → NVIDIA NIM (NVIDIA_API_KEY); trechos enviados ao provedor externo"),
         ("Executado (UTC)", datetime.now(timezone.utc).isoformat()),
         ("Resultado", "; ".join(f"{k}: {v}" for k, v in stats.items())),
         ("Falhas de IA nesta execução", str(ia.FALHAS)),
         ("Último erro de IA", str(ia.ULTIMO_ERRO)),
-        ("Limites", "Sem OCR; revisão automática pega eco e evidência inexistente, mas deslocamento entre campos irmãos exige conferência humana; IA pode oscilar entre execuções."),
+        ("Limites", "Sem OCR; revisão automática pega eco, evidência inexistente, tipo de valor incompatível e valor fora da evidência (anti-deslocamento), mas não substitui conferência humana; IA pode oscilar entre execuções e provedores."),
     ]
     for i, (a, b) in enumerate(linhas, 1):
         aud.cell(i, 1).value = a; aud.cell(i, 2).value = b
