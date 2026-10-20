@@ -1,0 +1,4 @@
+app/uploads/
+app/saida/
+__pycache__/
+*.pyc
