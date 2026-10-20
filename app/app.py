@@ -59,6 +59,9 @@ CLIENTE_NOTA = os.environ.get("CLIENTE_NOTA", "")  # nota extra na tela de login
 ORC_SUB = os.environ.get("ORC_SUB", "Módulo experimental &middot; ambiente de teste (staging) &middot; não é o app da apresentação")  # subtitulo do header da pagina /orcamento
 ORC_AVISO_TITULO = os.environ.get("ORC_AVISO_TITULO", "Ambiente de teste (staging).")  # parte em negrito do aviso no topo da /orcamento
 ORC_RODAPE_TAG = os.environ.get("ORC_RODAPE_TAG", "staging")  # etiqueta no rodape da /orcamento
+PAGINA_INICIAL = os.environ.get("PAGINA_INICIAL", "")  # se definido (ex.: "/orcamento"), a home redireciona para la; o verificador continua em /?verificador=1
+if PAGINA_INICIAL and not PAGINA_INICIAL.startswith("/"):
+    PAGINA_INICIAL = ""
 
 def _marca_topo():
     if CLIENTE_LOGO:
@@ -178,6 +181,8 @@ def estatico(nome):
 
 @app.route("/")
 def home():
+    if PAGINA_INICIAL and not request.args.get("verificador"):
+        return redirect(PAGINA_INICIAL)
     ultimo = session.get("ultimo_relatorio")
     if ultimo and not request.args.get("novo") and not request.args.get("historico") and os.path.isfile(os.path.join(SAIDA, ultimo + ".json")):
         return redirect("/relatorio/" + ultimo)
@@ -504,7 +509,7 @@ PAG_ORCAMENTO = """<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"
 <div class="warn"><b>O que este módulo faz:</b> a IA propõe valor, unidade, página e evidência para cada campo do checklist; uma revisão automática confere se a evidência existe de verdade no texto (o que não confirma vira "A confirmar" ou "Não encontrado").<br>
 <b>Limites:</b> sem OCR; deslocamento entre campos parecidos (ex.: material do corpo vs. do impulsor) ainda exige conferência humana; a IA pode oscilar entre execuções. A planilha sai no mesmo layout do checklist enviado, com uma aba "Auditoria" ao final (hash dos arquivos, modelo, data).<br>
 <b>Privacidade:</b> trechos do documento são enviados a provedor externo de IA (OpenRouter/NVIDIA) durante a extração. Teste uma extração por vez — este ambiente processa uma requisição por vez.</div>
-<div class="rodape">extracao-orcamento v0.3.1 &middot; __ORC_RODAPE_TAG__ &middot; <a href="/">voltar ao verificador (Módulo 1)</a></div>
+<div class="rodape">extracao-orcamento v0.3.1 &middot; __ORC_RODAPE_TAG__ &middot; <a href="/?verificador=1">voltar ao verificador (Módulo 1)</a></div>
 </div>
 <script>
 var f=document.getElementById("f"),prog=document.getElementById("prog"),ptxt=document.getElementById("prog-txt"),
