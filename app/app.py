@@ -509,7 +509,7 @@ PAG_ORCAMENTO = """<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"
 <div class="warn"><b>O que este módulo faz:</b> a IA propõe valor, unidade, página e evidência para cada campo do checklist; uma revisão automática confere se a evidência existe de verdade no texto (o que não confirma vira "A confirmar" ou "Não encontrado").<br>
 <b>Limites:</b> sem OCR; deslocamento entre campos parecidos (ex.: material do corpo vs. do impulsor) ainda exige conferência humana; a IA pode oscilar entre execuções. A planilha sai no mesmo layout do checklist enviado, com uma aba "Auditoria" ao final (hash dos arquivos, modelo, data).<br>
 <b>Privacidade:</b> trechos do documento são enviados a provedor externo de IA (OpenRouter/NVIDIA) durante a extração. Teste uma extração por vez — este ambiente processa uma requisição por vez.</div>
-<div class="rodape">extracao-orcamento v0.3.1 &middot; __ORC_RODAPE_TAG__ &middot; <a href="/?verificador=1">voltar ao verificador (Módulo 1)</a></div>
+<div class="rodape">extracao-orcamento v0.4.0 &middot; __ORC_RODAPE_TAG__ &middot; <a href="/?verificador=1">voltar ao verificador (Módulo 1)</a></div>
 </div>
 <script>
 var f=document.getElementById("f"),prog=document.getElementById("prog"),ptxt=document.getElementById("prog-txt"),
