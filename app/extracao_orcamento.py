@@ -25,13 +25,21 @@ from datetime import datetime, timezone
 
 import auditoria, extratores, ia
 
-VERSAO = "extracao-orcamento v0.3.1 (2026-10-20; staging; checklist enxuto; R1/R2/R3; trava-tipo prioriza nome do campo; eco exige 3+ chars; sem OCR)"
+VERSAO = "extracao-orcamento v0.4.0 (2026-10-21; staging; + modo estrito EXTRACAO_STRICT: resposta vazia/truncada vira falha auditavel, corpo do erro HTTP na auditoria, codigo alfanumerico exato na evidencia, trava-tipo cobre forma construtiva; sem OCR)"
 ST_EXTRAIDO, ST_NAO, ST_AMBIGUO, ST_NAOVERIF = "Extraído", "Não encontrado", "A confirmar", "Não verificado"
 
 COLS = {"valor": "Valor extraído", "unidade": "Unidade encontrada", "status": "Status da extração",
         "pagina": "Página", "evidencia": "Trecho de evidência", "obs": "Observações"}
 # Layout enxuto (escopo confirmado 2026-10-20): "Campo a extrair | Definição | Resultado extraído | Observações / pendências"
 COLS_ENXUTO = {"valor": "Resultado extraído", "obs": "Observações / pendências"}
+
+
+def _strict():
+    """Modo estrito (EXTRACAO_STRICT=1; ligado so na demo WEG, demais instancias
+    ficam no comportamento anterior): resposta incompleta da IA vira falha
+    auditavel, codigo alfanumerico (B3T/B5T/IP55...) tem que constar por inteiro
+    na evidencia e a trava de tipo cobre forma construtiva."""
+    return os.environ.get("EXTRACAO_STRICT", "").strip().lower() in ("1", "true", "sim", "yes", "on")
 
 _STOP = set("""para com uma como que dos das seu sua isso este esta entre sobre deve devem ser ter tipo
 tipo de cada qual quais mediante conforme quando onde pelo pela nos nas aos às the and or of for with shall""".split())
@@ -105,7 +113,7 @@ TRECHOS:
 
 def _chama_ia(msgs, timeout=150, tentativas=2):
     """Cadeia OpenRouter -> NVIDIA (ia.chamar_chat). None se indisponível/falhou."""
-    conteudo, _prov = ia.chamar_chat(msgs, max_tokens=2200, timeout=timeout, tentativas=tentativas)
+    conteudo, _prov = ia.chamar_chat(msgs, max_tokens=4000 if _strict() else 2200, timeout=timeout, tentativas=tentativas)
     return conteudo
 
 
@@ -142,6 +150,10 @@ def _extrair_categoria(cat, itens, paginas):
             if isinstance(item, dict) and item.get("id"):
                 item["ia_ok"] = True
                 achou[str(item["id"]).strip()] = item
+        if _strict() and len(achou) < len(lote):
+            ia._registrar_falha(
+                f"extracao: IA respondeu HTTP 200 mas com {len(achou)}/{len(lote)} campos do lote "
+                f"(resposta vazia/truncada/incompleta); campos ausentes marcados Não verificado")
         for c in lote:
             out[c["id"]] = achou.get(c["id"], {"ia_ok": True, "_sem_resposta": True})
     return out
@@ -181,6 +193,24 @@ _TIPO_CAMPO = [
 ]
 
 
+# Entradas extras do modo estrito: forma construtiva (B3T/B5T/V1...) — par
+# campo/valor sensivel a deslocamento observado na demo WEG (2026-10-21).
+_TIPOS_VALOR_STRICT = [
+    ("forma_construtiva", re.compile(r"\b[bv]\s?\d{1,2}\s?[a-z]{1,2}\b", re.I)),
+]
+_TIPO_CAMPO_STRICT = [
+    ("forma_construtiva", re.compile(r"forma construtiva|montagem", re.I)),
+]
+
+
+def _tipos_valor():
+    return _TIPOS_VALOR + _TIPOS_VALOR_STRICT if _strict() else _TIPOS_VALOR
+
+
+def _tipos_campo():
+    return _TIPO_CAMPO + _TIPO_CAMPO_STRICT if _strict() else _TIPO_CAMPO
+
+
 def _tipo_de(texto, regras):
     for nome, rx in regras:
         if rx.search(texto or ""):
@@ -206,6 +236,14 @@ def _valor_na_vizinhanca(valor, evid, texto_pagina):
     if texto_pagina is not None and ne and ne in texto_pagina:
         i = texto_pagina.find(ne)
         janela = texto_pagina[max(0, i - 80): i + len(ne) + 80]
+    if _strict():
+        v = _norm(valor)
+        if re.search(r"\d", v) and re.search(r"[a-z]", v):
+            # codigo alfanumerico (B3T, B5T, IP55...): o codigo INTEIRO tem que
+            # constar na evidencia/janela — um digito isolado ("5" de B5T) nao
+            # comprova o valor (bug do B5T "Extraido" com evidencia B3T).
+            if v.replace(" ", "") not in janela.replace(" ", ""):
+                return False
     ok_num = all(n in janela for n in nums) if nums else True
     if palavras:
         hits = sum(1 for w in palavras if w in janela)
@@ -257,7 +295,7 @@ def _pos_revisao(decisoes, campos):
                 and not _RX_CAMPO_IDENTIDADE.match(nome)):
             decisoes[chave] = (ST_AMBIGUO, valor, unidade, pagina, evid, (obs + " | " if obs else "") +
                 "Revisão automática (R2): valor idêntico ao tipo do equipamento (possível eco cruzado da IA) — conferir no documento")
-        elif (not _tipo_de(c["campo"] or "", _TIPO_CAMPO)
+        elif (not _tipo_de(c["campo"] or "", _tipos_campo())
                 and re.fullmatch(r"[~>=<+]*\s*\d+[.,]?\d*", valor.strip())
                 and _RX_UNIDADE_MEDIDA.search(evid or "")):
             decisoes[chave] = (ST_AMBIGUO, valor, unidade, pagina, evid, (obs + " | " if obs else "") +
@@ -308,8 +346,8 @@ def _revisar(fid, campo, res, paginas_norm):
         return ST_AMBIGUO, valor, unidade, None, evid, (obs + " | " if obs else "") + \
             "Revisão automática: evidência não localizada no texto extraído — conferir no documento"
     # trava 1: tipo do valor incompativel com o tipo do campo (deslocamento entre irmaos)
-    tipo_campo = _tipo_de(campo["campo"] or "", _TIPO_CAMPO) or _tipo_de((campo["definicao"] or "")[:80], _TIPO_CAMPO)
-    tipo_valor = _tipo_de(valor + " " + unidade, _TIPOS_VALOR)
+    tipo_campo = _tipo_de(campo["campo"] or "", _tipos_campo()) or _tipo_de((campo["definicao"] or "")[:80], _tipos_campo())
+    tipo_valor = _tipo_de(valor + " " + unidade, _tipos_valor())
     if tipo_campo and tipo_valor and tipo_campo != tipo_valor:
         return ST_AMBIGUO, valor, unidade, achada[0], evid, (obs + " | " if obs else "") + \
             f"Revisão automática: valor parece '{tipo_valor}' mas o campo pede '{tipo_campo}' (possível deslocamento entre campos) — conferir no documento"
