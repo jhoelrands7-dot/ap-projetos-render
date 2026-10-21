@@ -19,6 +19,13 @@ ROTULO_IA = f"IA via NVIDIA NIM ({MODELO})"
 ULTIMO_PROVEDOR = None  # "modelo (provedor)" da última chamada bem-sucedida
 
 
+def _strict():
+    """Modo estrito (EXTRACAO_STRICT=1; ligado so na demo WEG, demais instancias
+    ficam no comportamento anterior): resposta vazia da IA conta como falha e o
+    corpo do erro HTTP vai para a auditoria."""
+    return os.environ.get("EXTRACAO_STRICT", "").strip().lower() in ("1", "true", "sim", "yes", "on")
+
+
 def _provedores():
     """Cadeia de provedores: OpenRouter primeiro (se OPENROUTER_API_KEY), NVIDIA NIM como fallback."""
     prov = []
@@ -47,11 +54,22 @@ def chamar_chat(mensagens, max_tokens=1500, timeout=60, tentativas=2):
                 with urllib.request.urlopen(req, timeout=timeout) as resp:
                     dados = json.loads(resp.read().decode())
                 conteudo = dados["choices"][0]["message"].get("content") or ""
+                if _strict() and not conteudo.strip():
+                    _registrar_falha(f"{nome}: HTTP 200 com conteudo vazio da IA (tentativa {tentativa + 1})")
+                    continue
                 ULTIMO_PROVEDOR = f"{modelo} ({nome})"
                 _registrar_sucesso()
                 return conteudo, ULTIMO_PROVEDOR
             except Exception as e:
-                _registrar_falha(f"{nome}: {type(e).__name__} {str(e)[:120]} (tentativa {tentativa + 1})")
+                detalhe = str(e)[:120]
+                if _strict() and isinstance(e, urllib.error.HTTPError):
+                    try:
+                        corpo = e.read().decode("utf-8", "replace").strip()
+                    except Exception:
+                        corpo = ""
+                    if corpo:
+                        detalhe = f"{detalhe} | resposta do provedor: {corpo[:200]}"
+                _registrar_falha(f"{nome}: {type(e).__name__} {detalhe} (tentativa {tentativa + 1})")
     return None, None
 
 # --- observabilidade mínima (honestidade na demo) ---
