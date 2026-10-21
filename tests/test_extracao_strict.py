@@ -92,8 +92,9 @@ class RegressaoModoPadrao(Base):
 
     def test_lote_incompleto_sem_falha_modo_padrao(self):
         itens = [{"id": f"f{i}", "campo": f"Campo {i}", "definicao": "", "unidade_ref": ""} for i in range(5)]
-        with mock.patch.object(eo, "_chama_ia", return_value='[{"id": "f1", "valor": "x"'):
+        with mock.patch.object(eo, "_chama_ia", return_value='[{"id": "f1", "valor": "x"') as m:
             out = eo._extrair_categoria("geral", itens, [])
+        self.assertEqual(m.call_count, 1)
         self.assertTrue(all(out[f"f{i}"].get("_sem_resposta") for i in range(5)))
         self.assertEqual(ia.FALHAS, 0)
 
@@ -136,12 +137,27 @@ class ModoEstrito(Base):
             ia.chamar_chat([{"role": "user", "content": "x"}], max_tokens=5, tentativas=1)
         self.assertIn("Insufficient credits", ia.ULTIMO_ERRO or "")
 
-    def test_lote_incompleto_registra_falha(self):
+    def test_lote_incompleto_retenta_e_recupera(self):
         self.strict_on()
         itens = [{"id": f"f{i}", "campo": f"Campo {i}", "definicao": "", "unidade_ref": ""} for i in range(5)]
-        with mock.patch.object(eo, "_chama_ia", return_value='[{"id": "f1", "valor": "5,5", "evidencia": "Potência: 5,5 kW"}]'):
+        completo = json.dumps([{"id": f"f{i}", "valor": "1", "evidencia": "e"} for i in range(5)])
+        with mock.patch.object(eo, "_chama_ia", side_effect=['[{"id": "f1", "valor": "x"', completo]) as m, \
+                mock.patch("time.sleep") as slp:
             out = eo._extrair_categoria("geral", itens, [])
+        self.assertEqual(m.call_count, 2)
+        self.assertGreaterEqual(slp.call_count, 1)
         self.assertEqual(ia.FALHAS, 1)
+        self.assertTrue(all(not out[f"f{i}"].get("_sem_resposta") for i in range(5)))
+
+    def test_lote_sempre_incompleto_desiste_apos_3(self):
+        self.strict_on()
+        itens = [{"id": f"f{i}", "campo": f"Campo {i}", "definicao": "", "unidade_ref": ""} for i in range(5)]
+        with mock.patch.object(eo, "_chama_ia", return_value='[{"id": "f1", "valor": "x"') as m, \
+                mock.patch("time.sleep") as slp:
+            out = eo._extrair_categoria("geral", itens, [])
+        self.assertEqual(m.call_count, 3)
+        self.assertEqual(slp.call_count, 2)
+        self.assertEqual(ia.FALHAS, 3)
         self.assertTrue(all(out[f"f{i}"].get("_sem_resposta") for i in (0, 2, 3, 4)))
 
 
