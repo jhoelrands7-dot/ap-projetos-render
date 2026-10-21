@@ -19,13 +19,13 @@ Metodo (mesmo validado offline em 2026-10-20):
 Limites declarados: sem OCR (PDF escaneado nao funciona); IA pode oscilar;
 planilha de saida NAO e orcamento fechado.
 """
-import json, os, re, unicodedata, urllib.request
+import json, os, re, time, unicodedata, urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
 import auditoria, extratores, ia
 
-VERSAO = "extracao-orcamento v0.4.0 (2026-10-21; staging; + modo estrito EXTRACAO_STRICT: resposta vazia/truncada vira falha auditavel, corpo do erro HTTP na auditoria, codigo alfanumerico exato na evidencia, trava-tipo cobre forma construtiva; sem OCR)"
+VERSAO = "extracao-orcamento v0.4.1 (2026-10-21; staging; modo estrito EXTRACAO_STRICT: + retentativa de lote com backoff ate 2x quando a resposta da IA vem incompleta (anti falha silenciosa 4/12); resposta vazia/truncada vira falha auditavel, corpo do erro HTTP na auditoria, codigo alfanumerico exato na evidencia, trava-tipo cobre forma construtiva; sem OCR)"
 ST_EXTRAIDO, ST_NAO, ST_AMBIGUO, ST_NAOVERIF = "Extraído", "Não encontrado", "A confirmar", "Não verificado"
 
 COLS = {"valor": "Valor extraído", "unidade": "Unidade encontrada", "status": "Status da extração",
@@ -140,20 +140,36 @@ def _extrair_categoria(cat, itens, paginas):
         lista = "\n".join(f'- {c["id"]}: campo "{c["campo"]}" — {(c["definicao"] or "")[:120]}'
                           + (f' (unidade típica: {c["unidade_ref"]})' if c["unidade_ref"] else "")
                           for c in lote)
-        bruto = _chama_ia([{"role": "user", "content": PROMPT.format(categoria=cat, lista=lista, trechos=trechos)}],
-                          timeout=120, tentativas=3)
+        # Modo estrito: resposta incompleta do lote (HTTP 200 com JSON vazio/
+        # truncado/faltando campos) retenta o MESMO lote ate 2x com backoff —
+        # a falha silenciosa de 2026-10-21 (4/12 campos) era o provedor
+        # degradado devolvendo 200 ruim sem nenhuma nova tentativa.
+        achou = {}
+        bruto = None
+        tent_lote = 1 + (2 if _strict() else 0)
+        for tent_l in range(tent_lote):
+            if tent_l:
+                time.sleep(6 if tent_l == 1 else 15)
+            bruto = _chama_ia([{"role": "user", "content": PROMPT.format(categoria=cat, lista=lista, trechos=trechos)}],
+                              timeout=120, tentativas=3)
+            if bruto is None:
+                break
+            achou = {}
+            for item in _parse_lista(bruto):
+                if isinstance(item, dict) and item.get("id"):
+                    item["ia_ok"] = True
+                    achou[str(item["id"]).strip()] = item
+            if len(achou) >= len(lote):
+                break
+            if _strict():
+                restam = tent_lote - tent_l - 1
+                ia._registrar_falha(
+                    f"extracao: IA respondeu HTTP 200 mas com {len(achou)}/{len(lote)} campos do lote "
+                    f"(resposta vazia/truncada/incompleta)"
+                    + (f"; retentando o lote (restam {restam})" if restam else "; campos ausentes marcados Não verificado"))
         if bruto is None:
             out.update({c["id"]: {"ia_ok": False} for c in lote})
             continue
-        achou = {}
-        for item in _parse_lista(bruto):
-            if isinstance(item, dict) and item.get("id"):
-                item["ia_ok"] = True
-                achou[str(item["id"]).strip()] = item
-        if _strict() and len(achou) < len(lote):
-            ia._registrar_falha(
-                f"extracao: IA respondeu HTTP 200 mas com {len(achou)}/{len(lote)} campos do lote "
-                f"(resposta vazia/truncada/incompleta); campos ausentes marcados Não verificado")
         for c in lote:
             out[c["id"]] = achou.get(c["id"], {"ia_ok": True, "_sem_resposta": True})
     return out
