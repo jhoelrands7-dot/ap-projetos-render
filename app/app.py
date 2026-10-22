@@ -1059,8 +1059,9 @@ def _render_normas(res):
 </div>
 <div class="card transp" style="margin-top:0">
  <b>Auditoria:</b> {res["versao"]} &middot; execução {meta.get("inicio", "")[:19].replace("T", " ")} →
- {meta.get("fim", "")[:19].replace("T", " ")} UTC ({meta.get("duracao_s", "?")}s, {meta.get("tokens_ia", 0)} tokens de IA,
- ~US$ {meta.get("custo_ia_estimado_usd", 0)}). Textos de norma transcritos dos PDFs oficiais do MTE (links em cada cartão).
+ {meta.get("fim", "")[:19].replace("T", " ")} UTC ({meta.get("duracao_s", "?")}s,
+ {meta.get("ia", {}).get("chamadas", 0)} chamadas de IA, {meta.get("ia", {}).get("falhas", 0)} falhas).
+ Textos de norma transcritos dos PDFs oficiais do MTE (links em cada cartão).
 </div>
 <p style="margin-top:14px"><a class="btn" href="/normas/resultado/{request.path.rsplit('/', 1)[-1]}/json">Baixar JSON de auditoria</a>
 <a class="btn" style="background:#5a6474;margin-left:8px" href="/normas">Novo confronto</a>

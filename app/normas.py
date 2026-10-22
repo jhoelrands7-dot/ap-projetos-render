@@ -269,7 +269,6 @@ def executar(docs):
             "inicio": inicio.isoformat(timespec="seconds"),
             "fim": fim.isoformat(timespec="seconds"),
             "duracao_s": round((fim - inicio).total_seconds(), 1),
-            "tokens_ia": ia.TOKENS_USADOS,
-            "custo_ia_estimado_usd": ia.CUSTO_USD,
+            "ia": ia.status(),
         },
     }
