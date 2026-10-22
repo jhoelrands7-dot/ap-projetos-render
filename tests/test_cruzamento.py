@@ -67,9 +67,29 @@ def test_dedup_mesmo_doc_nao_diverge():
     assert itens[0]["status"] == "converge"
 
 
+
+def test_item_visao_entra_no_cruzamento():
+    """Item vindo da leitura visual casa com item de texto e vira convergência."""
+    a = _doc(0, [_item("área alvenaria", "13,00", "m²")])
+    b = _doc(1, [_item("área alvenaria", "13", "m²")])
+    b["itens"][0]["origem"] = "visao"
+    b["itens"][0]["evidencia_ok"] = None
+    itens, _, _ = cz._cruzar([a, b])
+    alv = next(i for i in itens if "alvenaria" in i["chave"])
+    assert alv["status"] == "converge", alv
+    assert alv["ocorrencias"][1]["origem"] == "visao"
+
+
+def test_item_texto_tem_origem_texto():
+    a = _doc(0, [_item("área limpeza terreno", "70", "m²")])
+    b = _doc(1, [_item("área limpeza terreno", "70", "m²")])
+    itens, _, _ = cz._cruzar([a, b])
+    assert all(oc["origem"] == "texto" for i in itens for oc in i["ocorrencias"])
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for fn in fns:
         fn()
         print("ok", fn.__name__)
     print(f"{len(fns)}/{len(fns)} OK")
+

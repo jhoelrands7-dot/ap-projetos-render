@@ -657,7 +657,7 @@ PAG_CRUZ = """<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">
  <div id="erro" role="alert" style="display:none;background:#fff0ef;color:#a22b28;padding:10px;border-radius:5px;margin-top:12px;font-size:13.5px"></div>
 </div>
 <div class="warn"><b>O que este módulo faz:</b> a IA lê cada documento e extrai os itens quantificados (valores com unidade, página e evidência); o sistema cruza os itens com o mesmo rótulo entre os documentos, além de tags de equipamento e CNPJ. Valores iguais viram convergência; diferentes viram divergência <b>para confirmar</b>.<br>
-<b>Sobre plantas e fluxogramas:</b> o que está <b>escrito</b> no documento entra no cruzamento (carimbo, legenda, tags, notas, listas). O <b>desenho</b> em si — linhas, símbolos, geometria — não é interpretado nesta versão. PDF escaneado não funciona (sem OCR).<br>
+<b>Sobre plantas e fluxogramas:</b> o que está <b>escrito</b> no documento entra no cruzamento (carimbo, legenda, tags, notas, listas). Páginas de desenho passam por <b>leitura visual experimental</b>: um modelo de visão tenta identificar elementos, símbolos, cotas e ligações — tudo marcado como <b>[leitura visual — hipótese]</b> e sujeito a erro; confira na imagem. Coordenadas e escala exatas não são garantidas. PDF escaneado sem camada de texto continua fora (sem OCR).<br>
 <b>Privacidade:</b> trechos dos documentos são enviados a provedor externo de IA (OpenRouter/NVIDIA). Teste um cruzamento por vez — este ambiente processa uma requisição por vez.</div>
 <div class="rodape">__CRUZ_VERSAO__ &middot; __ORC_RODAPE_TAG__ &middot; <a href="/">início</a> &middot; <a href="/orcamento">extração de checklist</a></div>
 </div>
@@ -720,7 +720,9 @@ def _linhas_item(res, item):
     for oc in item["ocorrencias"]:
         d = docs[oc["doc"]]
         ev = _esc(oc["evidencia"]) if oc["evidencia"] else "<i>sem evidência</i>"
-        if not oc["evidencia_ok"]:
+        if oc.get("origem") == "visao":
+            ev += ' <span style="color:#7b1fa2;font-size:11px;font-weight:700">[leitura visual — hipótese]</span>'
+        elif not oc["evidencia_ok"]:
             ev += ' <span style="color:#c62828;font-size:11px">(evidência não confirmada no texto)</span>'
         pag = f'página {oc["pagina"]}' if oc["pagina"] else "página não identificada"
         estilo = ' style="color:#c62828;font-weight:700"' if divergente else ""
@@ -820,8 +822,10 @@ def _render_cruzamento(res):
  <b>Auditoria:</b> {res["versao"]} &middot; IA: {_esc(prov)} ({ia_info.get("chamadas", 0)} chamadas, {falhas} falhas)
  &middot; execução {res["execucao"]["inicio_utc"][:19].replace("T", " ")} → {res["execucao"]["fim_utc"][:19].replace("T", " ")} UTC.
  Hashes SHA-256 de cada documento na tabela acima. Resultado completo em JSON no botão abaixo.<br>
- <b>Limites:</b> sem OCR; o desenho (linhas, símbolos) não é interpretado — só o texto; casamento por rótulo de item,
- então itens com nomes muito diferentes podem não casar; toda divergência exige confirmação humana.
+ <b>Limites:</b> sem OCR; casamento por rótulo de item, então itens com nomes muito diferentes podem não casar;
+ toda divergência exige confirmação humana. <b>Leitura visual de desenhos (experimental):</b> itens marcados
+ [leitura visual — hipótese] vieram de um modelo de visão sobre a imagem da página — o modelo pode errar
+ elementos, contagens e símbolos, e não garante coordenadas nem escala; a confirmação é humana, olhando o desenho.
 </div>
 <p style="margin-top:14px"><a class="btn" href="/cruzamento/resultado/{request.path.rsplit('/', 1)[-1]}/json">Baixar JSON de auditoria</a>
 <a class="btn" style="background:#5a6474;margin-left:8px" href="/cruzamento">Novo cruzamento</a>

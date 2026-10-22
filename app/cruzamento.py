@@ -23,6 +23,7 @@ import json, os, re, time, unicodedata
 from datetime import datetime, timezone
 
 import auditoria, extratores, ia
+import visao
 
 VERSAO = ("cruzamento v0.1.0 (2026-10-22; staging; Módulo 2 experimental: "
           "cruzamento de itens quantificados, tags e CNPJ entre 2-5 PDFs de texto; "
@@ -169,13 +170,15 @@ def _extrair_doc(idx, caminho, nome, disciplina, avisos):
     sha = auditoria.sha256_arquivo(caminho)
     paginas_sem_texto = [p.numero for p in doc.paginas if len((p.texto or "").strip()) < 20]
     paginas_desenho = [p.numero for p in doc.paginas
-                       if len((p.texto or "").strip()) < 200 and p.num_imagens > 0]
+                       if (len((p.texto or "").strip()) < 200 and p.num_imagens > 0)
+                       or (p.num_vetores >= 150 and len((p.texto or "").strip()) < 1500)]
     if len(paginas_sem_texto) == doc.num_paginas:
         avisos.append(f"'{nome}': nenhuma página com texto legível — PDF escaneado ou só desenho. "
                       "Sem OCR, este documento não entra no cruzamento.")
     elif paginas_desenho:
-        avisos.append(f"'{nome}': página(s) {', '.join(map(str, paginas_desenho[:8]))} parecem desenho "
-                      "com pouco texto — só o que está escrito entra; linhas e símbolos não são lidos.")
+        avisos.append(f"'{nome}': página(s) {', '.join(map(str, paginas_desenho[:8]))} parecem desenho — "
+                      "o que está escrito entra no cruzamento e a leitura visual experimental tenta "
+                      "identificar os elementos do desenho (hipótese).")
     trechos, tot = _montar_trechos(doc)
     if sum(len(p.texto or "") for p in doc.paginas) > tot:
         avisos.append(f"'{nome}': documento grande — analisadas as primeiras páginas até {CAP_TEXTO//1000} mil caracteres.")
@@ -210,8 +213,37 @@ def _extrair_doc(idx, caminho, nome, disciplina, avisos):
             "rotulo": rotulo, "chave": chave,
             "valor": valor, "valor_num": _parse_num(valor),
             "unidade": (it.get("unidade") or "").strip(), "unidade_norm": _norm_unid(it.get("unidade")),
-            "pagina": pag, "evidencia": evid, "evidencia_ok": ev_ok,
+            "pagina": pag, "evidencia": evid, "evidencia_ok": ev_ok, "origem": "texto",
         })
+    # --- leitura VISUAL experimental das páginas de desenho (hipótese) ---
+    if visao.ativo():
+        pags_desenho = sorted(set(paginas_sem_texto) | set(paginas_desenho))[:visao.MAX_PAGINAS_VISAO]
+        n_visao = 0
+        for pnum in pags_desenho:
+            vistos_pg, erro = visao.extrair_pagina_visao(caminho, pnum)
+            if erro:
+                avisos.append(f"'{nome}': página {pnum}: leitura visual não concluída ({erro}).")
+                continue
+            for it in vistos_pg:
+                chave = _chave_item(it["rotulo"])
+                if not chave:
+                    continue
+                dedup = ("visao", chave, _norm(it["valor"]), _norm_unid(it["unidade"]))
+                if dedup in vistos:
+                    continue
+                vistos.add(dedup)
+                itens.append({
+                    "rotulo": it["rotulo"], "chave": chave,
+                    "valor": it["valor"], "valor_num": _parse_num(it["valor"]),
+                    "unidade": it["unidade"], "unidade_norm": _norm_unid(it["unidade"]),
+                    "pagina": pnum, "evidencia": it["evidencia"],
+                    "evidencia_ok": None, "origem": "visao",
+                })
+                n_visao += 1
+        if n_visao:
+            avisos.append(f"'{nome}': {n_visao} item(ns) lidos por VISÃO nas páginas de desenho "
+                          f"({', '.join(map(str, pags_desenho))}) — hipótese de modelo de visão; "
+                          "confira na imagem antes de usar.")
     tags = sorted(set(m.group(0) for m in TAG_RX.finditer(doc.texto_completo)))
     cnpjs = sorted(set(m.group(0) for m in CNPJ_RX.finditer(doc.texto_completo)))
     return {
@@ -254,7 +286,7 @@ def _cruzar(documentos):
             "ocorrencias": [{
                 "doc": i, "valor": it["valor"], "unidade": it["unidade"],
                 "pagina": it["pagina"], "evidencia": it["evidencia"],
-                "evidencia_ok": it["evidencia_ok"],
+                "evidencia_ok": it["evidencia_ok"], "origem": it.get("origem", "texto"),
             } for i, it in occs],
         })
     # --- tags de equipamento ---
