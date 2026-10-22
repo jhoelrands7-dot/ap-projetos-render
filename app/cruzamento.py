@@ -242,7 +242,7 @@ def _cruzar(documentos):
             vals = [it["valor_num"] for it in por_doc.values()]
             unids = [it["unidade_norm"] for it in por_doc.values()]
             num_ok = all(v is not None for v in vals)
-            mesma_unid = len(set(u for u in unids if u)) <= 1
+            mesma_unid = len(set(unids)) <= 1
             if num_ok and len(set(vals)) == 1 and mesma_unid:
                 status = "converge"
             elif not num_ok and len({_norm(it["valor"]) for it in por_doc.values()}) == 1 and mesma_unid:

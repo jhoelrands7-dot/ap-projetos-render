@@ -179,10 +179,28 @@ def estatico(nome):
     return send_from_directory(os.path.join(BASE, "static"), nome)
 
 
+PAG_HUB = """<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>__CLIENTE__ - Verificação de Documentos de Engenharia</title>
+<style>__CSS__ .mods{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}.mod{display:block;background:#fff;border-radius:8px;box-shadow:0 1px 4px rgba(20,30,50,.08);padding:22px 24px;text-decoration:none;color:#232323;border-left:4px solid #1f6fb2}.mod:hover{box-shadow:0 3px 12px rgba(20,30,50,.16)}.mod h3{margin:0 0 8px;font-size:16px;color:#2b3550}.mod p{margin:0;font-size:13px;color:#5a6474;line-height:1.5}.tag{display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.6px;color:#fff;background:#6b4fa8;border-radius:10px;padding:2px 9px;margin-bottom:10px}.tag.m1{background:#2e7d32}</style></head>
+<body>
+<header class="topo">__MARCA__
+<div><div class="t">Verificação de Documentos de Engenharia</div>
+<div class="s">__ORC_SUB__</div></div></header>
+<div class="wrap">
+<div class="mods">
+ <a class="mod" href="/?verificador=1"><span class="tag m1">MÓDULO 1</span><h3>Verificador de documentos</h3><p>Verifica um documento contra o checklist FRM-SEMEC-001 (Parecer Técnico), item a item, com evidência, página e relatório de auditoria.</p></a>
+ <a class="mod" href="/orcamento"><span class="tag">EXPERIMENTAL</span><h3>Extração de checklist de orçamento</h3><p>Preenche um checklist de orçamento (XLSX) a partir de um documento técnico: valor, unidade, página e evidência por campo.</p></a>
+ <a class="mod" href="/cruzamento"><span class="tag">MÓDULO 2 &middot; EXPERIMENTAL</span><h3>Cruzamento entre documentos</h3><p>Cruza de 2 a 5 documentos do mesmo projeto: itens quantificados, tags de equipamento e CNPJ. Convergências e divergências para confirmar, com evidências dos dois lados.</p></a>
+</div>
+<div class="rodape">ambiente de teste (staging) &middot; os resultados são reais</div>
+</div></body></html>"""
+
+
 @app.route("/")
 def home():
     if PAGINA_INICIAL and not request.args.get("verificador"):
-        return redirect(PAGINA_INICIAL)
+        return (PAG_HUB.replace("__CSS__", _css_marca()).replace("__MARCA__", _marca_topo())
+                .replace("__CLIENTE__", CLIENTE_NOME).replace("__ORC_SUB__", ORC_SUB))
     ultimo = session.get("ultimo_relatorio")
     if ultimo and not request.args.get("novo") and not request.args.get("historico") and os.path.isfile(os.path.join(SAIDA, ultimo + ".json")):
         return redirect("/relatorio/" + ultimo)
@@ -509,7 +527,7 @@ PAG_ORCAMENTO = """<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"
 <div class="warn"><b>O que este módulo faz:</b> a IA propõe valor, unidade, página e evidência para cada campo do checklist; uma revisão automática confere se a evidência existe de verdade no texto (o que não confirma vira "A confirmar" ou "Não encontrado").<br>
 <b>Limites:</b> sem OCR; deslocamento entre campos parecidos (ex.: material do corpo vs. do impulsor) ainda exige conferência humana; a IA pode oscilar entre execuções. A planilha sai no mesmo layout do checklist enviado, com uma aba "Auditoria" ao final (hash dos arquivos, modelo, data).<br>
 <b>Privacidade:</b> trechos do documento são enviados a provedor externo de IA (OpenRouter/NVIDIA) durante a extração. Teste uma extração por vez — este ambiente processa uma requisição por vez.</div>
-<div class="rodape">extracao-orcamento v0.4.0 &middot; __ORC_RODAPE_TAG__ &middot; <a href="/?verificador=1">verificador (Módulo 1)</a> &middot; <a href="/cruzamento">cruzamento entre documentos (Módulo 2 experimental)</a></div>
+<div class="rodape">extracao-orcamento v0.4.0 &middot; __ORC_RODAPE_TAG__ &middot; <a href="/">início</a> &middot; <a href="/?verificador=1">verificador (Módulo 1)</a> &middot; <a href="/cruzamento">cruzamento entre documentos (Módulo 2 experimental)</a></div>
 </div>
 <script>
 var f=document.getElementById("f"),prog=document.getElementById("prog"),ptxt=document.getElementById("prog-txt"),
@@ -641,7 +659,7 @@ PAG_CRUZ = """<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">
 <div class="warn"><b>O que este módulo faz:</b> a IA lê cada documento e extrai os itens quantificados (valores com unidade, página e evidência); o sistema cruza os itens com o mesmo rótulo entre os documentos, além de tags de equipamento e CNPJ. Valores iguais viram convergência; diferentes viram divergência <b>para confirmar</b>.<br>
 <b>Sobre plantas e fluxogramas:</b> o que está <b>escrito</b> no documento entra no cruzamento (carimbo, legenda, tags, notas, listas). O <b>desenho</b> em si — linhas, símbolos, geometria — não é interpretado nesta versão. PDF escaneado não funciona (sem OCR).<br>
 <b>Privacidade:</b> trechos dos documentos são enviados a provedor externo de IA (OpenRouter/NVIDIA). Teste um cruzamento por vez — este ambiente processa uma requisição por vez.</div>
-<div class="rodape">__CRUZ_VERSAO__ &middot; __ORC_RODAPE_TAG__ &middot; <a href="/orcamento">extração de checklist</a> &middot; <a href="/?verificador=1">verificador (Módulo 1)</a></div>
+<div class="rodape">__CRUZ_VERSAO__ &middot; __ORC_RODAPE_TAG__ &middot; <a href="/">início</a> &middot; <a href="/orcamento">extração de checklist</a> &middot; <a href="/?verificador=1">verificador (Módulo 1)</a></div>
 </div>
 <script>
 var inp=document.getElementById("docs"),linhas=document.getElementById("linhas");
@@ -743,9 +761,12 @@ def _render_cruzamento(res):
     if len(cnpjs) == 1 and len(cnpjs[0]["docs"]) == len(docs):
         bloco_cnpj = (f'<p style="font-size:13.5px">✔ Mesmo CNPJ do proprietário em todos os documentos: '
                       f'<b>{_esc(cnpjs[0]["cnpj"])}</b></p>')
-    elif cnpjs:
+    elif len(cnpjs) > 1:
         partes = ", ".join(f'{_esc(c["cnpj"])} em {len(c["docs"])} doc(s)' for c in cnpjs)
         bloco_cnpj = f'<p style="font-size:13.5px;color:#c62828">⚠ CNPJs diferentes entre os documentos: {partes}</p>'
+    elif cnpjs:
+        bloco_cnpj = (f'<p style="font-size:13.5px;color:#8a93a3">CNPJ {_esc(cnpjs[0]["cnpj"])} '
+                      f'em {len(cnpjs[0]["docs"])} de {len(docs)} documentos.</p>')
     else:
         bloco_cnpj = '<p style="font-size:13.5px;color:#8a93a3">Nenhum CNPJ identificado nos documentos.</p>'
     tags_comp = [t for t in res["tags"] if t["status"] == "compartilhada"]
@@ -803,7 +824,8 @@ def _render_cruzamento(res):
  então itens com nomes muito diferentes podem não casar; toda divergência exige confirmação humana.
 </div>
 <p style="margin-top:14px"><a class="btn" href="/cruzamento/resultado/{request.path.rsplit('/', 1)[-1]}/json">Baixar JSON de auditoria</a>
-<a class="btn" style="background:#5a6474;margin-left:8px" href="/cruzamento">Novo cruzamento</a></p>
+<a class="btn" style="background:#5a6474;margin-left:8px" href="/cruzamento">Novo cruzamento</a>
+<a class="btn" style="background:#5a6474;margin-left:8px" href="/">Início</a></p>
 <div class="rodape">{res["versao"].split(" (")[0]} &middot; {ORC_RODAPE_TAG}</div>
 </div></body></html>"""
 
