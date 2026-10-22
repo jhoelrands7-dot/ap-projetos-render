@@ -27,7 +27,8 @@ import visao
 
 VERSAO = ("cruzamento v0.1.0 (2026-10-22; staging; Módulo 2 experimental: "
           "cruzamento de itens quantificados, tags e CNPJ entre 2-5 PDFs de texto; "
-          "anti-eco de evidência; sem OCR; desenho não interpretado)")
+          "anti-eco de evidência; sem OCR; leitura visual experimental de páginas de desenho "
+          "(modelo de visão, itens marcados como hipótese; confirmação humana na imagem)")
 
 MAX_DOCS = 5
 CAP_TEXTO = 28000  # por documento, como na extração de orçamento
