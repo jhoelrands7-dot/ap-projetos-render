@@ -191,6 +191,7 @@ PAG_HUB = """<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">
  <a class="mod" href="/?verificador=1"><span class="tag m1">MÓDULO 1</span><h3>Verificador de documentos</h3><p>Verifica um documento contra o checklist FRM-SEMEC-001 (Parecer Técnico), item a item, com evidência, página e relatório de auditoria.</p></a>
  <a class="mod" href="/orcamento"><span class="tag">EXPERIMENTAL</span><h3>Extração de checklist de orçamento</h3><p>Preenche um checklist de orçamento (XLSX) a partir de um documento técnico: valor, unidade, página e evidência por campo.</p></a>
  <a class="mod" href="/cruzamento"><span class="tag">MÓDULO 2 &middot; EXPERIMENTAL</span><h3>Cruzamento entre documentos</h3><p>Cruza de 2 a 5 documentos do mesmo projeto: itens quantificados, tags de equipamento e CNPJ. Convergências e divergências para confirmar, com evidências dos dois lados.</p></a>
+ <a class="mod" href="/normas"><span class="tag">MÓDULO 3 &middot; EXPERIMENTAL</span><h3>Confronto com normas</h3><p>Casa os números dos documentos com parâmetros de normas públicas (NR-24, NR-35). Toda conclusão é hipótese, com o trecho oficial da norma, a fonte e as evidências na tela — e o que não cobre, declarado.</p></a>
 </div>
 <div class="rodape">ambiente de teste (staging) &middot; os resultados são reais</div>
 </div></body></html>"""
@@ -527,7 +528,7 @@ PAG_ORCAMENTO = """<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"
 <div class="warn"><b>O que este módulo faz:</b> a IA propõe valor, unidade, página e evidência para cada campo do checklist; uma revisão automática confere se a evidência existe de verdade no texto (o que não confirma vira "A confirmar" ou "Não encontrado").<br>
 <b>Limites:</b> sem OCR; deslocamento entre campos parecidos (ex.: material do corpo vs. do impulsor) ainda exige conferência humana; a IA pode oscilar entre execuções. A planilha sai no mesmo layout do checklist enviado, com uma aba "Auditoria" ao final (hash dos arquivos, modelo, data).<br>
 <b>Privacidade:</b> trechos do documento são enviados a provedor externo de IA (OpenRouter/NVIDIA) durante a extração. Teste uma extração por vez — este ambiente processa uma requisição por vez.</div>
-<div class="rodape">extracao-orcamento v0.4.0 &middot; __ORC_RODAPE_TAG__ &middot; <a href="/">início</a> &middot; <a href="/?verificador=1">verificador (Módulo 1)</a> &middot; <a href="/cruzamento">cruzamento entre documentos (Módulo 2 experimental)</a></div>
+<div class="rodape">extracao-orcamento v0.4.0 &middot; __ORC_RODAPE_TAG__ &middot; <a href="/">início</a> &middot; <a href="/?verificador=1">verificador (Módulo 1)</a> &middot; <a href="/cruzamento">cruzamento entre documentos (Módulo 2 experimental)</a> &middot; <a href="/normas">confronto com normas (Módulo 3 experimental)</a></div>
 </div>
 <script>
 var f=document.getElementById("f"),prog=document.getElementById("prog"),ptxt=document.getElementById("prog-txt"),
@@ -893,6 +894,241 @@ def cruzamento_json(jid):
         abort(404)
     return send_file(j["json_path"], as_attachment=True,
                      download_name="cruzamento_auditoria.json")
+
+
+
+# ================= Módulo 3 experimental: casamento e confronto com normas =================
+
+import normas
+
+JOBS_NRM = {}
+
+
+def _limpar_jobs_nrm():
+    agora = time.time()
+    for jid, j in list(JOBS_NRM.items()):
+        if agora - j.get("criado_em", agora) > 3 * 3600:
+            for p in j.get("paths", []):
+                try:
+                    if p and os.path.exists(p):
+                        os.remove(p)
+                except OSError:
+                    pass
+            sj = j.get("json_path")
+            try:
+                if sj and os.path.exists(sj):
+                    os.remove(sj)
+            except OSError:
+                pass
+            JOBS_NRM.pop(jid, None)
+
+
+def _roda_normas(jid):
+    j = JOBS_NRM[jid]
+    try:
+        res = normas.executar(j["docs"])
+        with open(j["json_path"], "w", encoding="utf-8") as f:
+            json.dump(res, f, ensure_ascii=False, indent=2)
+        j.update(status="pronto")
+    except Exception as e:
+        j.update(status="erro", erro=str(e)[:400])
+
+
+PAG_NRM = """<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Confronto com normas | __CLIENTE__ (teste)</title>
+<style>__CSS__ .spin{display:inline-block;width:16px;height:16px;border:3px solid #c9d4e4;border-top-color:#1f6fb2;border-radius:50%;animation:giro .8s linear infinite;vertical-align:-3px;margin-right:8px}@keyframes giro{to{transform:rotate(360deg)}}.barra{margin-top:10px;height:8px;background:#e3e9f2;border-radius:4px;overflow:hidden}.barra>div{height:100%;width:30%;background:#1f6fb2;border-radius:4px;animation:carrega 1.4s ease-in-out infinite}@keyframes carrega{0%{margin-left:-30%}100%{margin-left:100%}}.warn{background:#fdf6e3;border:1px solid #e3d193;border-radius:8px;padding:12px 16px;font-size:12.5px;color:#5d5426;line-height:1.55;margin-top:14px}label{display:block;font-size:13.5px;font-weight:600;margin:14px 0 6px;color:#2b3550}</style></head>
+<body>
+<header class="topo">__MARCA__
+<div><div class="t">Confronto com normas &middot; Módulo 3 (experimental)</div>
+<div class="s">__ORC_SUB__</div></div></header>
+<div class="wrap">
+<div class="warn" style="margin-bottom:14px"><b>__ORC_AVISO_TITULO__</b> Módulo 3 em versão experimental: toda conclusão é uma <b>hipótese</b>, mostrada com a evidência do documento de um lado e o trecho oficial da norma do outro. Quem confirma é o profissional.</div>
+<div class="card">
+ <h2>1. Envie de 1 a 5 documentos do mesmo projeto</h2>
+ <form id="f">
+  <label for="docs">Documentos (PDF com texto; escaneado não funciona - sem OCR)</label>
+  <input type="file" id="docs" name="docs" accept=".pdf,application/pdf" multiple required>
+  <p style="margin-top:16px"><button class="btn" type="submit">Confrontar com as normas</button></p>
+ </form>
+ <div id="prog" style="display:none;margin-top:14px;font-size:14px;color:#2b3550;font-weight:600"><span class="spin"></span><span id="prog-txt">Confrontando... leva alguns minutos. Não feche esta página.</span><div class="barra"><div></div></div></div>
+ <div id="erro" role="alert" style="display:none;background:#fff0ef;color:#a22b28;padding:10px;border-radius:5px;margin-top:12px;font-size:13.5px"></div>
+</div>
+<div class="warn"><b>O que este módulo faz:</b> a IA extrai os itens quantificados dos documentos e o sistema os casa com os parâmetros de normas públicas da biblioteca (hoje: NR-24 — instalações sanitárias e chuveiros por trabalhador; NR-35 — trabalho em altura acima de 2,00 m). Cada parâmetro sai com status de hipótese, os números encontrados, o trecho oficial da norma e o link da fonte.<br>
+<b>O que NÃO cobre:</b> normas ABNT (pagas, não reproduzidas), códigos de obras municipais, o desenho dos documentos (linhas e símbolos não são lidos) e o julgamento de aplicabilidade — que é humano.<br>
+<b>Privacidade:</b> trechos dos documentos são enviados a provedor externo de IA (OpenRouter/NVIDIA). Teste um confronto por vez — este ambiente processa uma requisição por vez.</div>
+<div class="rodape">__NRM_VERSAO__ &middot; __ORC_RODAPE_TAG__ &middot; <a href="/">início</a> &middot; <a href="/orcamento">extração de checklist</a> &middot; <a href="/cruzamento">cruzamento (Módulo 2)</a></div>
+</div>
+<script>
+var inp=document.getElementById("docs");
+var f=document.getElementById("f"),prog=document.getElementById("prog"),ptxt=document.getElementById("prog-txt"),erro=document.getElementById("erro");
+f.addEventListener("submit",function(ev){
+ ev.preventDefault();erro.style.display="none";
+ if(inp.files.length<1){erro.textContent="Envie pelo menos 1 documento PDF.";erro.style.display="block";return;}
+ if(inp.files.length>5){erro.textContent="Máximo de 5 documentos neste ambiente de teste.";erro.style.display="block";return;}
+ var fd=new FormData(f);prog.style.display="block";
+ fetch("/normas/novo",{method:"POST",body:fd}).then(function(r){
+  if(!r.ok)return r.text().then(function(t){throw new Error(t)});
+  return r.json();}).then(function(d){
+  var ini=Date.now();
+  var tick=setInterval(function(){
+   var s=Math.floor((Date.now()-ini)/1000),m=Math.floor(s/60),ss=("0"+(s%60)).slice(-2);
+   ptxt.textContent="Confrontando... há "+m+":"+ss+". Não feche esta página.";
+   fetch("/normas/job/"+d.job+"/status").then(function(r){return r.json();}).then(function(st){
+    if(st.status==="pronto"){clearInterval(tick);window.location="/normas/resultado/"+d.job;}
+    else if(st.status==="erro"){clearInterval(tick);prog.style.display="none";
+     erro.textContent="O confronto falhou: "+(st.erro||"erro desconhecido");erro.style.display="block";}
+   }).catch(function(){});
+  },5000);
+ }).catch(function(e){prog.style.display="none";erro.textContent="Falha no envio: "+e.message;erro.style.display="block";});
+});
+</script></body></html>"""
+
+_STATUS_NRM = {
+    "atende_hipotese": ("Hipótese: atende", "#2e7d32"),
+    "atencao_hipotese": ("Hipótese: atenção", "#c62828"),
+    "aplicavel_hipotese": ("Hipótese: norma se aplica", "#e6a817"),
+    "nao_encontrado": ("Dados não encontrados", "#8a93a3"),
+}
+
+
+def _card_norma(res, n):
+    docs = res["documentos"]
+    rotulo, cor = _STATUS_NRM.get(n["status"], (n["status"], "#8a93a3"))
+    evs = []
+    for ev in n.get("evidencias", [])[:8]:
+        d = docs[ev["doc"]]
+        pag = f'página {ev["pagina"]}' if ev.get("pagina") else "página não identificada"
+        txt = _esc(ev["evidencia"]) if ev.get("evidencia") else "<i>sem evidência</i>"
+        evs.append(f'<tr><td>{_esc(d["nome"])}</td><td>{_esc(ev["rotulo"])}: <b>{_esc(ev["valor"])} {_esc(ev["unidade"])}</b></td>'
+                   f'<td style="font-size:12px">{pag} — “{txt}”</td></tr>')
+    tab_ev = (f'<table style="margin-top:8px"><tr><th>Documento</th><th>Número encontrado</th><th>Evidência</th></tr>{"".join(evs)}</table>'
+              if evs else "")
+    return f"""<div class="card">
+ <h2 style="margin-bottom:4px">{_esc(n["norma"])} &middot; item {_esc(n["item"])} — {_esc(n["titulo"])}
+ <span class="chip" style="background:{cor};vertical-align:2px;margin-left:6px">{rotulo}</span></h2>
+ <p style="font-size:13.5px"><b>Regra:</b> {_esc(n["resumo_regra"])}</p>
+ <p style="font-size:13.5px"><b>Leitura do sistema:</b> {_esc(n["detalhe"])}</p>
+ <blockquote style="margin:10px 0;padding:10px 14px;border-left:4px solid #1f6fb2;background:#f2f6fb;font-size:13px;color:#2b3550">
+  <b>Trecho oficial da norma:</b> “{_esc(n["texto"])}”<br>
+  <span style="font-size:12px;color:#5a6474">Fonte: {_esc(n["fonte_nome"])} — <a href="{_esc(n["fonte_url"])}" target="_blank" rel="noopener">{_esc(n["fonte_url"])}</a></span>
+ </blockquote>
+ {tab_ev}
+ <p style="font-size:12px;color:#8a93a3;margin-top:8px">{_esc(n["obs"])}</p>
+</div>"""
+
+
+def _render_normas(res):
+    docs = res["documentos"]
+    linhas_docs = "".join(
+        f'<tr><td>{_esc(d["nome"])}</td><td>{d["paginas"]}</td><td>{d["num_itens"]}</td>'
+        f'<td style="font-size:11px;font-family:monospace">{d["sha256"][:16]}…</td></tr>'
+        for d in docs)
+    cards = "".join(_card_norma(res, n) for n in res["normas"])
+    nao_cobre = "".join(f"<li>{_esc(x)}</li>" for x in res.get("nao_cobre", []))
+    meta = res.get("meta", {})
+    avisos = "".join(f'<div class="warn" style="margin-bottom:8px">{_esc(a)}</div>' for a in res.get("avisos", []))
+    r = res["resumo"]
+    chips = " ".join([
+        f'<span class="chip" style="background:#2e7d32">{r["hipoteses_atendimento"]} hipótese(s) de atendimento</span>',
+        f'<span class="chip" style="background:#c62828">{r["hipoteses_atencao"]} pedindo atenção</span>',
+        f'<span class="chip" style="background:#e6a817">{r["hipoteses_aplicavel"]} norma(s) possivelmente aplicável(is)</span>',
+        f'<span class="chip" style="background:#8a93a3">{r["nao_encontrados"]} sem dados no documento</span>'])
+    return f"""<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Resultado do confronto | {CLIENTE_NOME} (teste)</title>
+<style>{_css_marca()} .warn{{background:#fdf6e3;border:1px solid #e3d193;border-radius:8px;padding:12px 16px;font-size:12.5px;color:#5d5426;line-height:1.55}}</style></head>
+<body>
+<header class="topo">{_marca_topo()}
+<div><div class="t">Resultado do confronto &middot; Módulo 3 (experimental)</div>
+<div class="s">{len(docs)} documento(s) &middot; {meta.get("inicio", "")[:19].replace("T", " ")} UTC</div></div></header>
+<div class="wrap">
+<div class="card">
+ <h2>Resumo</h2>
+ <p>{chips}</p>
+ <p style="font-size:12.5px;color:#5a6474">Toda conclusão é uma <b>hipótese</b>: os números vêm do texto dos
+ documentos e a IA pode oscilar. A decisão final é sempre do profissional.</p>
+</div>
+{avisos}
+{cards}
+<div class="card">
+ <h2>O que este confronto NÃO cobre</h2>
+ <ul style="font-size:13.5px;line-height:1.7">{nao_cobre}</ul>
+</div>
+<div class="card">
+ <h2>Documentos confrontados</h2>
+ <table><tr><th>Documento</th><th>Páginas</th><th>Itens extraídos</th><th>SHA-256</th></tr>{linhas_docs}</table>
+</div>
+<div class="card transp" style="margin-top:0">
+ <b>Auditoria:</b> {res["versao"]} &middot; execução {meta.get("inicio", "")[:19].replace("T", " ")} →
+ {meta.get("fim", "")[:19].replace("T", " ")} UTC ({meta.get("duracao_s", "?")}s, {meta.get("tokens_ia", 0)} tokens de IA,
+ ~US$ {meta.get("custo_ia_estimado_usd", 0)}). Textos de norma transcritos dos PDFs oficiais do MTE (links em cada cartão).
+</div>
+<p style="margin-top:14px"><a class="btn" href="/normas/resultado/{request.path.rsplit('/', 1)[-1]}/json">Baixar JSON de auditoria</a>
+<a class="btn" style="background:#5a6474;margin-left:8px" href="/normas">Novo confronto</a>
+<a class="btn" style="background:#5a6474;margin-left:8px" href="/">Início</a></p>
+<div class="rodape">{res["versao"].split(" (")[0]} &middot; {ORC_RODAPE_TAG}</div>
+</div></body></html>"""
+
+
+@app.route("/normas")
+def normas_pagina():
+    return (PAG_NRM.replace("__CSS__", _css_marca()).replace("__MARCA__", _marca_topo())
+            .replace("__CLIENTE__", CLIENTE_NOME).replace("__ORC_SUB__", ORC_SUB)
+            .replace("__ORC_AVISO_TITULO__", ORC_AVISO_TITULO).replace("__ORC_RODAPE_TAG__", ORC_RODAPE_TAG)
+            .replace("__NRM_VERSAO__", normas.VERSAO.split(" (")[0]))
+
+
+@app.route("/normas/novo", methods=["POST"])
+def normas_novo():
+    _limpar_jobs_nrm()
+    arquivos = [a for a in request.files.getlist("docs") if a and a.filename]
+    if not arquivos:
+        return "Envie pelo menos 1 documento PDF.", 400
+    if len(arquivos) > 5:
+        return "Máximo de 5 documentos neste ambiente de teste.", 400
+    for a in arquivos:
+        if os.path.splitext(a.filename)[1].lower() != ".pdf":
+            return "Todos os documentos precisam ser PDF.", 400
+    jid = uuid.uuid4().hex[:12]
+    docs, paths = [], []
+    for i, a in enumerate(arquivos):
+        p = os.path.join(UPLOADS, f"nrm-{jid}-{i}.pdf")
+        a.save(p)
+        paths.append(p)
+        docs.append({"caminho": p, "nome": a.filename})
+    json_path = os.path.join(SAIDA, f"nrm-{jid}.json")
+    JOBS_NRM[jid] = {"status": "processando", "criado_em": time.time(),
+                     "docs": docs, "paths": paths, "json_path": json_path}
+    threading.Thread(target=_roda_normas, args=(jid,), daemon=True).start()
+    return {"job": jid}
+
+
+@app.route("/normas/job/<jid>/status")
+def normas_status(jid):
+    j = JOBS_NRM.get(jid)
+    if not j:
+        return {"status": "erro", "erro": "job não encontrado (o serviço pode ter reiniciado; envie de novo)"}, 404
+    return {"status": j["status"], "erro": j.get("erro")}
+
+
+@app.route("/normas/resultado/<jid>")
+def normas_resultado(jid):
+    j = JOBS_NRM.get(jid)
+    res = None
+    if j and j.get("status") == "pronto" and os.path.exists(j["json_path"]):
+        with open(j["json_path"], encoding="utf-8") as f:
+            res = json.load(f)
+    if res is None:
+        abort(404)
+    return _render_normas(res)
+
+
+@app.route("/normas/resultado/<jid>/json")
+def normas_json(jid):
+    j = JOBS_NRM.get(jid)
+    if not j or j.get("status") != "pronto" or not os.path.exists(j["json_path"]):
+        abort(404)
+    return send_file(j["json_path"], as_attachment=True,
+                     download_name="confronto_normas_auditoria.json")
 
 
 
