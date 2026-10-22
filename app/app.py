@@ -188,7 +188,6 @@ PAG_HUB = """<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">
 <div class="s">__ORC_SUB__</div></div></header>
 <div class="wrap">
 <div class="mods">
- <a class="mod" href="/?verificador=1"><span class="tag m1">MÓDULO 1</span><h3>Verificador de documentos</h3><p>Verifica um documento contra o checklist FRM-SEMEC-001 (Parecer Técnico), item a item, com evidência, página e relatório de auditoria.</p></a>
  <a class="mod" href="/orcamento"><span class="tag">EXPERIMENTAL</span><h3>Extração de checklist de orçamento</h3><p>Preenche um checklist de orçamento (XLSX) a partir de um documento técnico: valor, unidade, página e evidência por campo.</p></a>
  <a class="mod" href="/cruzamento"><span class="tag">MÓDULO 2 &middot; EXPERIMENTAL</span><h3>Cruzamento entre documentos</h3><p>Cruza de 2 a 5 documentos do mesmo projeto: itens quantificados, tags de equipamento e CNPJ. Convergências e divergências para confirmar, com evidências dos dois lados.</p></a>
  <a class="mod" href="/normas"><span class="tag">MÓDULO 3 &middot; EXPERIMENTAL</span><h3>Confronto com normas</h3><p>Casa os números dos documentos com parâmetros de normas públicas (NR-24, NR-35). Toda conclusão é hipótese, com o trecho oficial da norma, a fonte e as evidências na tela — e o que não cobre, declarado.</p></a>
@@ -528,7 +527,7 @@ PAG_ORCAMENTO = """<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"
 <div class="warn"><b>O que este módulo faz:</b> a IA propõe valor, unidade, página e evidência para cada campo do checklist; uma revisão automática confere se a evidência existe de verdade no texto (o que não confirma vira "A confirmar" ou "Não encontrado").<br>
 <b>Limites:</b> sem OCR; deslocamento entre campos parecidos (ex.: material do corpo vs. do impulsor) ainda exige conferência humana; a IA pode oscilar entre execuções. A planilha sai no mesmo layout do checklist enviado, com uma aba "Auditoria" ao final (hash dos arquivos, modelo, data).<br>
 <b>Privacidade:</b> trechos do documento são enviados a provedor externo de IA (OpenRouter/NVIDIA) durante a extração. Teste uma extração por vez — este ambiente processa uma requisição por vez.</div>
-<div class="rodape">extracao-orcamento v0.4.0 &middot; __ORC_RODAPE_TAG__ &middot; <a href="/">início</a> &middot; <a href="/?verificador=1">verificador (Módulo 1)</a> &middot; <a href="/cruzamento">cruzamento entre documentos (Módulo 2 experimental)</a> &middot; <a href="/normas">confronto com normas (Módulo 3 experimental)</a></div>
+<div class="rodape">extracao-orcamento v0.4.0 &middot; __ORC_RODAPE_TAG__ &middot; <a href="/">início</a> &middot; <a href="/cruzamento">cruzamento entre documentos (Módulo 2 experimental)</a> &middot; <a href="/normas">confronto com normas (Módulo 3 experimental)</a></div>
 </div>
 <script>
 var f=document.getElementById("f"),prog=document.getElementById("prog"),ptxt=document.getElementById("prog-txt"),
@@ -660,7 +659,7 @@ PAG_CRUZ = """<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">
 <div class="warn"><b>O que este módulo faz:</b> a IA lê cada documento e extrai os itens quantificados (valores com unidade, página e evidência); o sistema cruza os itens com o mesmo rótulo entre os documentos, além de tags de equipamento e CNPJ. Valores iguais viram convergência; diferentes viram divergência <b>para confirmar</b>.<br>
 <b>Sobre plantas e fluxogramas:</b> o que está <b>escrito</b> no documento entra no cruzamento (carimbo, legenda, tags, notas, listas). O <b>desenho</b> em si — linhas, símbolos, geometria — não é interpretado nesta versão. PDF escaneado não funciona (sem OCR).<br>
 <b>Privacidade:</b> trechos dos documentos são enviados a provedor externo de IA (OpenRouter/NVIDIA). Teste um cruzamento por vez — este ambiente processa uma requisição por vez.</div>
-<div class="rodape">__CRUZ_VERSAO__ &middot; __ORC_RODAPE_TAG__ &middot; <a href="/">início</a> &middot; <a href="/orcamento">extração de checklist</a> &middot; <a href="/?verificador=1">verificador (Módulo 1)</a></div>
+<div class="rodape">__CRUZ_VERSAO__ &middot; __ORC_RODAPE_TAG__ &middot; <a href="/">início</a> &middot; <a href="/orcamento">extração de checklist</a></div>
 </div>
 <script>
 var inp=document.getElementById("docs"),linhas=document.getElementById("linhas");
