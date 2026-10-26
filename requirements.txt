@@ -6,3 +6,4 @@ reportlab>=3.6
 pillow>=10
 
 gunicorn>=23.0
+pymupdf>=1.24

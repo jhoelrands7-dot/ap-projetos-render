@@ -16,6 +16,7 @@ class Pagina:
     nome: str               # "página 1", "aba Plan1", "documento DOCX"
     texto: str
     num_imagens: int = 0
+    num_vetores: int = 0  # linhas+retas+curvas (desenho vetorial)
 
 @dataclass
 class DocExtraido:
@@ -57,7 +58,8 @@ def extrair_pdf(caminho):
             doc.paginas.append(Pagina(
                 numero=i, nome=f"página {i}",
                 texto=page.extract_text() or "",
-                num_imagens=len(page.images)))
+                num_imagens=len(page.images),
+                num_vetores=len(page.lines) + len(page.rects) + len(page.curves)))
     return doc
 
 
