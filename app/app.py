@@ -192,7 +192,7 @@ PAG_HUB = """<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">
  <a class="mod" href="/cruzamento"><span class="tag">MÓDULO 2 &middot; EXPERIMENTAL</span><h3>Cruzamento entre documentos</h3><p>Cruza de 2 a 5 documentos do mesmo projeto: itens quantificados, tags de equipamento e CNPJ. Convergências e divergências para confirmar, com evidências dos dois lados.</p></a>
  <a class="mod" href="/normas"><span class="tag">MÓDULO 3 &middot; EXPERIMENTAL</span><h3>Confronto com normas</h3><p>Casa os números dos documentos com parâmetros de normas públicas (NR-24, NR-35). Toda conclusão é hipótese, com o trecho oficial da norma, a fonte e as evidências na tela — e o que não cobre, declarado.</p></a>
 </div>
-<div class="rodape">ambiente de teste (staging) &middot; os resultados são reais</div>
+<div class="rodape">ambiente de teste (__ORC_RODAPE_TAG__) &middot; os resultados são reais</div>
 </div></body></html>"""
 
 
@@ -200,7 +200,8 @@ PAG_HUB = """<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">
 def home():
     if PAGINA_INICIAL and not request.args.get("verificador"):
         return (PAG_HUB.replace("__CSS__", _css_marca()).replace("__MARCA__", _marca_topo())
-                .replace("__CLIENTE__", CLIENTE_NOME).replace("__ORC_SUB__", ORC_SUB))
+                .replace("__CLIENTE__", CLIENTE_NOME).replace("__ORC_SUB__", ORC_SUB)
+                .replace("__ORC_RODAPE_TAG__", ORC_RODAPE_TAG))
     ultimo = session.get("ultimo_relatorio")
     if ultimo and not request.args.get("novo") and not request.args.get("historico") and os.path.isfile(os.path.join(SAIDA, ultimo + ".json")):
         return redirect("/relatorio/" + ultimo)
