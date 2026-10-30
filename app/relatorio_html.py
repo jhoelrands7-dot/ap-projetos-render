@@ -16,8 +16,8 @@ def _e(s):
 
 def _decisao(decisao_por):
     d = (decisao_por or "").lower()
-    if "ia via nvidia" in d:
-        return "IA (NVIDIA NIM)", "#6b4fa8"
+    if "ia via " in d:
+        return "IA (modelo de linguagem)", "#6b4fa8"
     if "simulada" in d:
         return "Heurística (simulada)", "#8a6d3b"
     if "regra" in d:
@@ -79,7 +79,7 @@ def render(registro, slug=None):
     analise = registro.get("analise_ia") or {}
     comentarios = analise.get("comentarios", {})
     if analise.get("resumo"):
-        bloco_ia_geral = (f'<div class="ia-geral"><b>Análise geral da IA (NVIDIA NIM)</b>{_e(analise["resumo"])}'
+        bloco_ia_geral = (f'<div class="ia-geral"><b>Análise geral da IA (modelo de linguagem)</b>{_e(analise["resumo"])}'
                           f'<span class="sub" style="display:block;margin-top:6px;font-size:11px">Texto auxiliar gerado por IA; não altera nenhum status nem a auditoria.</span></div>')
     else:
         bloco_ia_geral = ""
@@ -111,7 +111,7 @@ def render(registro, slug=None):
         com_ia = ""
         if comentarios.get(r["item"]):
             com_ia = (f'<div class="ia-com"><b>Análise da IA</b>{_e(comentarios[r["item"]])}'
-                      f'<span class="sub2">gerado por IA (NVIDIA NIM) &middot; auxiliar, não altera o status</span></div>')
+                      f'<span class="sub2">gerado por IA (modelo de linguagem) &middot; auxiliar, não altera o status</span></div>')
         blocos.append(f'''
 <div class="item" style="border-left-color:{cor}">
   <div class="item-head">
@@ -166,10 +166,10 @@ def render(registro, slug=None):
 </div>
 {''.join(blocos)}
 <div class="transp"><b>Transparência deste MVP:</b> check-list transcrito de um print (só a aba Parecer Técnico; as outras abas não eram legíveis).
-Itens marcados "Heurística (simulada)" ainda não usam IA; itens marcados "IA (NVIDIA NIM)" foram decididos por modelo de linguagem real;
+Itens marcados "Heurística (simulada)" ainda não usam IA; itens marcados "IA (modelo de linguagem)" foram decididos por modelo de linguagem real;
 itens marcados "Humano" não são decididos pelo motor.
 Documentos de outras organizações não seguem o padrão AP de numeração/carimbo: nesses itens, o achado indica diferença de padrão, não necessariamente erro no documento.</div>
 <details><summary>Log de execução (auditoria)</summary><ul class="log">{log}</ul></details>
 <details><summary>Outros documentos e histórico</summary><p><a class="btn sec" href="/?historico=1#historico">Abrir histórico</a><a class="btn" href="/?novo=1">Verificar outro documento</a></p></details>
-<div class="rodape">MVP - Módulo 1 (verificação de documentos) &middot; LuxVerso &middot; extração local; trechos enviados à NVIDIA quando a IA está ligada</div>
+<div class="rodape">MVP - Módulo 1 (verificação de documentos) &middot; LuxVerso &middot; extração local; trechos enviados ao provedor externo de IA quando a IA está ligada</div>
 </div></body></html>'''
