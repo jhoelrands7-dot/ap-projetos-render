@@ -53,7 +53,7 @@ LOGIN = """<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
 <label for="password">Senha</label><input id="password" name="password" type="password" autocomplete="current-password" required>
 <label class="show"><input type="checkbox" onclick="document.getElementById('password').type=this.checked?'text':'password'">Mostrar senha</label>
 <button type="submit">Entrar na plataforma</button></form></section>
-<p class="note">MVP • Módulo 1 • Parecer Técnico<br>Acesso restrito. Endereço temporário para testes.<br>Com IA ligada, trechos são enviados à NVIDIA.</p></main></body></html>"""
+<p class="note">MVP • Módulo 1 • Parecer Técnico<br>Acesso restrito. Endereço temporário para testes.<br>Com IA ligada, trechos são enviados ao provedor externo de IA.</p></main></body></html>"""
 
 @app.before_request
 def _auth_demo():
@@ -160,7 +160,7 @@ def home():
     for d in docs:
         try:
             reg = json.load(open(os.path.join(SAIDA, d["slug"] + ".json")))
-            usa_ia = any("IA via NVIDIA" in r.get("decisao_por", "") for r in reg["resultados"])
+            usa_ia = any("IA via " in r.get("decisao_por", "") for r in reg["resultados"])
         except Exception:
             usa_ia = False
         tag = ' <span style="color:#6b4fa8;font-size:11px;font-weight:700">IA</span>' if usa_ia else ""
@@ -173,15 +173,15 @@ def home():
         try:
             reg = json.load(open(os.path.join(SAIDA, f"{slug}.json")))
             resumo = auditoria.resumo_status(reg["resultados"])
-            usa_ia = any("IA via NVIDIA" in r.get("decisao_por", "") for r in reg["resultados"])
+            usa_ia = any("IA via " in r.get("decisao_por", "") for r in reg["resultados"])
             tag = ' <span style="color:#6b4fa8;font-size:11px;font-weight:700">IA</span>' if usa_ia else ""
             linhas += (f'<tr><td><a href="/relatorio/{slug}">{reg["documento"]["nome"][:62]}</a>{tag} '
                        f'<span style="color:#98a1ae;font-size:11px">(upload)</span></td>'
                        f'<td>{_chips(resumo)}</td></tr>')
         except Exception:
             pass
-    modo_ia = (f"ligada (modelo {ia.MODELO}) &middot; <a href='/saude-ia' target='_blank'>testar agora</a>"
-               if os.environ.get("NVIDIA_API_KEY")
+    modo_ia = (f"ligada ({ia.PROVEDOR} &middot; modelo {ia.MODELO}) &middot; <a href='/saude-ia' target='_blank'>testar agora</a>"
+               if ia.disponivel()
                else "desligada (heurística simulada nos itens de classe B)")
     return f"""<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>AP - Verificação de Documentos de Engenharia</title><style>{CSS}</style><style>.spin{{display:inline-block;width:16px;height:16px;border:3px solid #c9d4e4;border-top-color:#1f6fb2;border-radius:50%;animation:giro .8s linear infinite;vertical-align:-3px;margin-right:8px}}@keyframes giro{{to{{transform:rotate(360deg)}}}}.carregando{{display:none;margin-top:12px;font-size:14px;color:#2b3550;font-weight:600}}.barra{{margin-top:10px;height:8px;background:#e3e9f2;border-radius:4px;overflow:hidden}}.barra>div{{height:100%;width:30%;background:#1f6fb2;border-radius:4px;animation:carrega 1.4s ease-in-out infinite}}@keyframes carrega{{0%{{margin-left:-30%}}100%{{margin-left:100%}}}}</style></head>
@@ -202,7 +202,7 @@ def home():
    <div class="carregando" id="um-loading" role="status"><span class="spin"></span>Analisando o documento... leva de 1 a 3 minutos. Não feche esta página.<div class="barra"><div></div></div></div>
   </div>
  </form>
- <p class="modo">IA nesta instância: <b>{modo_ia}</b> &middot; cada item do relatório mostra quem decidiu: regra determinística, IA (NVIDIA NIM), heurística simulada ou humano.</p>
+ <p class="modo">IA nesta instância: <b>{modo_ia}</b> &middot; cada item do relatório mostra quem decidiu: regra determinística, IA (modelo de linguagem), heurística simulada ou humano.</p>
 </div>
 <div class="card" style="margin-top:18px">
  <h2>Verificar vários documentos (até 5)</h2>
@@ -313,9 +313,9 @@ def home():
  <table><tr><th>Documento</th><th>Resultado</th></tr>{linhas}</table>
 </details>
 <div class="transp"><b>Transparência deste MVP:</b> check-list transcrito de um print (só a aba Parecer Técnico; as demais abas não eram legíveis).
-Itens marcados "Heurística (simulada)" ainda não usam IA; itens "IA (NVIDIA NIM)" foram decididos por modelo de linguagem real; itens "Humano" não são decididos pelo motor.
+Itens marcados "Heurística (simulada)" ainda não usam IA; itens "IA (modelo de linguagem)" foram decididos por modelo de linguagem real; itens "Humano" não são decididos pelo motor.
 Documentos de outras organizações não seguem o padrão AP de numeração/carimbo: nesses itens, o achado indica diferença de padrão, não necessariamente erro no documento.</div>
-<div class="rodape">MVP - Módulo 1 (verificação de documentos) &middot; LuxVerso &middot; extração local; trechos enviados à NVIDIA quando a IA está ligada</div>
+<div class="rodape">MVP - Módulo 1 (verificação de documentos) &middot; LuxVerso &middot; extração local; trechos enviados ao provedor externo de IA quando a IA está ligada</div>
 </div></body></html>"""
 
 

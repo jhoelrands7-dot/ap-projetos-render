@@ -11,9 +11,19 @@ Ponto de troca para IA real nas regras de classe B (NVIDIA NIM).
 """
 import json, os, re, urllib.request, urllib.error
 
-ENDPOINT = "https://integrate.api.nvidia.com/v1/chat/completions"
-MODELO = os.environ.get("NVIDIA_MODELO", "meta/llama-3.2-11b-vision-instruct")
-ROTULO_IA = f"IA via NVIDIA NIM ({MODELO})"
+# Provedor: OpenRouter quando OPENROUTER_API_KEY existe; senao NVIDIA NIM (comportamento anterior).
+_USA_OPENROUTER = bool(os.environ.get("OPENROUTER_API_KEY"))
+if _USA_OPENROUTER:
+    ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
+    MODELO = os.environ.get("OPENROUTER_MODEL", "openai/gpt-4o-mini")
+    PROVEDOR = "OpenRouter"
+    _VAR_CHAVE = "OPENROUTER_API_KEY"
+else:
+    ENDPOINT = "https://integrate.api.nvidia.com/v1/chat/completions"
+    MODELO = os.environ.get("NVIDIA_MODELO", "meta/llama-3.2-11b-vision-instruct")
+    PROVEDOR = "NVIDIA NIM"
+    _VAR_CHAVE = "NVIDIA_API_KEY"
+ROTULO_IA = f"IA via {PROVEDOR} ({MODELO})"
 
 # --- observabilidade mínima (honestidade na demo) ---
 ULTIMO_ERRO = None
@@ -47,9 +57,9 @@ def status():
 
 def saude(timeout=20):
     """Healthcheck real: 1 completition mínima contra o endpoint. Sem chave, ok=False."""
-    chave = os.environ.get("NVIDIA_API_KEY")
+    chave = os.environ.get(_VAR_CHAVE)
     if not chave:
-        return {"modelo": MODELO, "ok": False, "http": None, "detalhe": "NVIDIA_API_KEY ausente nesta instância"}
+        return {"modelo": MODELO, "ok": False, "http": None, "detalhe": _VAR_CHAVE + " ausente nesta instância"}
     corpo = {"model": MODELO,
              "messages": [{"role": "user", "content": "Responda apenas: ok"}],
              "temperature": 0, "max_tokens": 5}
@@ -76,7 +86,7 @@ _STATUS_VALIDOS = {"CONFORME", "NÃO CONFORME", "EVIDÊNCIA INSUFICIENTE", "NÃO
 
 
 def disponivel():
-    return bool(os.environ.get("NVIDIA_API_KEY"))
+    return bool(os.environ.get(_VAR_CHAVE))
 
 
 PROMPT = """Você é um verificador de documentos de engenharia. Avalie o item de check-list abaixo contra o trecho do documento.
@@ -98,7 +108,7 @@ def avaliar_classe_b(item, descricao, trecho, timeout=45, tentativas=2):
     """Chama o LLM. Retorna dict {status, observacao, evidencia} ou None (fallback).
     1 retry: a conta gratuita do NIM oscila de latência e um estouro isolado
     não deve derrubar o item para a heurística."""
-    chave = os.environ.get("NVIDIA_API_KEY")
+    chave = os.environ.get(_VAR_CHAVE)
     if not chave:
         return None
     corpo = {
@@ -156,7 +166,7 @@ RESULTADOS DO CHECK-LIST:
 
 def comentar(resultados, timeout=45):
     """Gera resumo geral + comentário por item via LLM. Retorna dict ou None (fallback)."""
-    chave = os.environ.get("NVIDIA_API_KEY")
+    chave = os.environ.get(_VAR_CHAVE)
     if not chave:
         return None
     itens = []
